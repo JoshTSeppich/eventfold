@@ -118,7 +118,7 @@ export function LeadsView({ T, onRequestSwitchTab }) {
             style={{
               background: T.surface, border: `1px solid ${T.border}`,
               borderRadius: 7, padding: "5px 10px 5px 28px",
-              color: T.txt, fontSize: 12, width: 200, outline: "none",
+              color: T.text, fontSize: 12, width: 200, outline: "none",
             }}
           />
           <span style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", color: T.muted, fontSize: 12, pointerEvents: "none" }}>⌕</span>

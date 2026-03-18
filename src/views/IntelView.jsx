@@ -249,7 +249,7 @@ function pickHook(title, topHooks, primaryHook) {
 
 function PipelineStep({ stage, status, detail, isDark, T }) {
   const MODEL_COLOR = { Haiku: "#f59e0b", Sonnet: "#8b5cf6", Apollo: "#06b6d4" };
-  const color = status === "done" ? T.green : status === "error" ? T.red : status === "active" ? T.accent : T.muted;
+  const color = status === "done" ? T.green : status === "error" ? T.red : status === "active" ? T.accent : T.textMuted;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0" }}>
       <span style={{
@@ -257,10 +257,10 @@ function PipelineStep({ stage, status, detail, isDark, T }) {
         background: color,
         boxShadow: status === "active" ? `0 0 6px ${color}` : "none",
       }} />
-      <span style={{ fontSize: 12, color: status === "done" ? T.sub : status === "active" ? T.txt : T.muted, flex: 1 }}>
+      <span style={{ fontSize: 12, color: status === "done" ? T.textSub : status === "active" ? T.text : T.textMuted, flex: 1 }}>
         {stage.label}
       </span>
-      <span style={{ fontSize: 10, fontWeight: 600, color: MODEL_COLOR[stage.model] || T.muted, opacity: status === "pending" ? 0.4 : 1 }}>
+      <span style={{ fontSize: 10, fontWeight: 600, color: MODEL_COLOR[stage.model] || T.textMuted, opacity: status === "pending" ? 0.4 : 1 }}>
         {stage.model}
       </span>
       {status === "done" && <span style={{ color: T.green, fontSize: 11 }}>✓</span>}
@@ -271,7 +271,7 @@ function PipelineStep({ stage, status, detail, isDark, T }) {
 
 function ContactCard({ contact, checks, isDark, T, selected, onToggle }) {
   const score = fitScore(checks || []);
-  const scoreColor = score == null ? T.muted : score >= 75 ? T.green : score >= 50 ? "#f59e0b" : T.red;
+  const scoreColor = score == null ? T.textMuted : score >= 75 ? T.green : score >= 50 ? "#f59e0b" : T.red;
 
   return (
     <div
@@ -285,8 +285,8 @@ function ContactCard({ contact, checks, isDark, T, selected, onToggle }) {
     >
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: T.txt, marginBottom: 2 }}>{contact.name}</div>
-          <div style={{ fontSize: 11, color: T.sub }}>{contact.title} · {contact.company}</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 2 }}>{contact.name}</div>
+          <div style={{ fontSize: 11, color: T.textSub }}>{contact.title} · {contact.company}</div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, marginLeft: 10 }}>
           {score != null && (
@@ -299,7 +299,7 @@ function ContactCard({ contact, checks, isDark, T, selected, onToggle }) {
       </div>
 
       {contact.email && (
-        <div style={{ fontSize: 11, color: T.sub, marginBottom: 6 }}>
+        <div style={{ fontSize: 11, color: T.textSub, marginBottom: 6 }}>
           <span style={{ color: contact.emailStatus === "verified" ? T.green : "#f59e0b", marginRight: 4 }}>
             {contact.emailStatus === "verified" ? "✓" : "~"}
           </span>
@@ -308,7 +308,7 @@ function ContactCard({ contact, checks, isDark, T, selected, onToggle }) {
       )}
 
       {contact.hook && (
-        <div style={{ fontSize: 11, color: T.muted, fontStyle: "italic", borderLeft: `2px solid ${T.border}`, paddingLeft: 8, marginTop: 6 }}>
+        <div style={{ fontSize: 11, color: T.textMuted, fontStyle: "italic", borderLeft: `2px solid ${T.border}`, paddingLeft: 8, marginTop: 6 }}>
           {contact.hook}
         </div>
       )}
@@ -334,7 +334,7 @@ export function IntelView({ T, onSendToLeads }) {
   const [filter, setFilter]         = useState("all");
   const abortRef = useRef(false);
 
-  const anthropicKey = settings.anthropicKey || localStorage.getItem("ff_anthropic_key") || "";
+  const anthropicKey = settings.anthropicKey || "";
   const apolloKey    = settings.apolloKey    || "";
 
   const setSt = (id, status, detail) => {
@@ -500,7 +500,7 @@ Return ONLY valid JSON: { "queryIndices": [0,1,2], "personTitles": [...], "senio
         padding: 16, gap: 12, overflowY: "auto",
       }}>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Intel Pack</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Intel Pack</div>
           <textarea
             value={markdown}
             onChange={(e) => setMarkdown(e.target.value)}
@@ -516,7 +516,7 @@ Return ONLY valid JSON: { "queryIndices": [0,1,2], "personTitles": [...], "senio
               padding: "10px 12px",
               background: isDark ? "#0a0f1a" : "#ffffff",
               border: `1px solid ${T.border}`,
-              borderRadius: 8, color: T.txt, fontSize: 12,
+              borderRadius: 8, color: T.text, fontSize: 12,
               resize: "none", outline: "none", fontFamily: "monospace",
               lineHeight: 1.5,
             }}
@@ -528,7 +528,7 @@ Return ONLY valid JSON: { "queryIndices": [0,1,2], "personTitles": [...], "senio
           disabled={running || !markdown.trim()}
           style={{
             width: "100%", padding: "10px 0",
-            background: running ? T.muted : T.accent,
+            background: running ? T.textMuted : T.accent,
             border: "none", borderRadius: 8,
             color: "#fff", fontSize: 13, fontWeight: 700,
             cursor: running ? "not-allowed" : "pointer",
@@ -560,7 +560,7 @@ Return ONLY valid JSON: { "queryIndices": [0,1,2], "personTitles": [...], "senio
 
         {/* Pipeline steps */}
         <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 12 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Pipeline</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Pipeline</div>
           {STAGES.map((s) => (
             <PipelineStep key={s.id} stage={s} status={stageStatus[s.id] || "pending"} isDark={isDark} T={T_local} />
           ))}
@@ -575,11 +575,11 @@ Return ONLY valid JSON: { "queryIndices": [0,1,2], "personTitles": [...], "senio
         {/* Query log */}
         {queryLog.length > 0 && (
           <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 12 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Queries</div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Queries</div>
             {queryLog.map((q, i) => (
-              <div key={i} style={{ fontSize: 11, color: T.sub, marginBottom: 4, display: "flex", justifyContent: "space-between" }}>
+              <div key={i} style={{ fontSize: 11, color: T.textSub, marginBottom: 4, display: "flex", justifyContent: "space-between" }}>
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{q.label}</span>
-                <span style={{ flexShrink: 0, marginLeft: 8, color: q.tier > 1 ? "#f59e0b" : T.muted }}>
+                <span style={{ flexShrink: 0, marginLeft: 8, color: q.tier > 1 ? "#f59e0b" : T.textMuted }}>
                   {q.count} {q.tier > 1 ? `(T${q.tier})` : ""}
                 </span>
               </div>
@@ -597,7 +597,7 @@ Return ONLY valid JSON: { "queryIndices": [0,1,2], "personTitles": [...], "senio
             padding: "10px 16px", borderBottom: `1px solid ${T.border}`,
             flexShrink: 0,
           }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: T.txt }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: T.text }}>
               {contacts.length} contacts · {contacts.filter((c) => c.email).length} with email
             </span>
             <div style={{ display: "flex", gap: 4, marginLeft: 8 }}>
@@ -606,14 +606,14 @@ Return ONLY valid JSON: { "queryIndices": [0,1,2], "personTitles": [...], "senio
                   background: filter === v ? T.accent : "transparent",
                   border: `1px solid ${filter === v ? T.accent : T.border}`,
                   borderRadius: 6, padding: "3px 10px",
-                  color: filter === v ? "#fff" : T.sub,
+                  color: filter === v ? "#fff" : T.textSub,
                   fontSize: 11, cursor: "pointer",
                 }}>{l}</button>
               ))}
             </div>
 
             <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-              <button onClick={toggleAll} style={{ background: "transparent", border: `1px solid ${T.border}`, borderRadius: 7, padding: "5px 10px", color: T.sub, fontSize: 11, cursor: "pointer" }}>
+              <button onClick={toggleAll} style={{ background: "transparent", border: `1px solid ${T.border}`, borderRadius: 7, padding: "5px 10px", color: T.textSub, fontSize: 11, cursor: "pointer" }}>
                 {allSelected ? "Deselect all" : `Select all (${visible.length})`}
               </button>
               {done && (
@@ -633,7 +633,7 @@ Return ONLY valid JSON: { "queryIndices": [0,1,2], "personTitles": [...], "senio
 
         {/* Empty state */}
         {!running && contacts.length === 0 && (
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, color: T.sub }}>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, color: T.textSub }}>
             <span style={{ fontSize: 32 }}>⚡</span>
             <p style={{ fontSize: 14 }}>Paste an intel pack and run the pipeline to find contacts.</p>
           </div>

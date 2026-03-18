@@ -112,7 +112,6 @@ function ActionButtons({ lead, isDark, onCopy, onStatusUpdate }) {
         : btn("✉", "No email", null, true)}
       {lead.outreachStatus === "new"      && btn("✓", "Mark in-flight", () => onStatusUpdate(lead.id, "contacted"))}
       {lead.outreachStatus === "contacted" && btn("↩", "Got a reply", () => onStatusUpdate(lead.id, "responded"))}
-      {btn("→", "Push to EventFold", null, false)}
     </div>
   );
 }

@@ -215,12 +215,23 @@ export function EmailView({ T }) {
             onChange={e => onLeadChange(e.target.value)}
             style={{ ...inputStyle }}
           >
-            <option value="">Select a lead…</option>
-            {leads.map(l => (
-              <option key={l.id} value={l.id}>
-                {l.name} — {l.company}
-              </option>
-            ))}
+            <option value="">Select a lead with email…</option>
+            {(() => {
+              const STATUS_ORDER = { new: 0, contacted: 1, responded: 2, qualified: 3, dead: 4 };
+              const emailLeads = leads
+                .filter(l => l.email)
+                .sort((a, b) => {
+                  const so = (STATUS_ORDER[a.outreachStatus] ?? 5) - (STATUS_ORDER[b.outreachStatus] ?? 5);
+                  if (so !== 0) return so;
+                  return a.name.localeCompare(b.name);
+                });
+              const STATUS_PREFIX = { new: "● ", contacted: "→ ", responded: "↩ ", qualified: "★ ", dead: "✗ " };
+              return emailLeads.map(l => (
+                <option key={l.id} value={l.id}>
+                  {STATUS_PREFIX[l.outreachStatus] || ""}{l.name} — {l.company}
+                </option>
+              ));
+            })()}
           </select>
           {activeLead && (
             <div style={{ marginTop: 8, padding: "8px 10px", background: T.card, borderRadius: 8, border: `1px solid ${T.border}` }}>
@@ -409,6 +420,25 @@ export function EmailView({ T }) {
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button
+                  onClick={() => {
+                    setDraft(null);
+                    setEditedSubject("");
+                    setEditedBody("");
+                    if (selectedLeadId) clearDraft(selectedLeadId);
+                    setMarkedSent(false);
+                  }}
+                  style={{
+                    padding: "7px 12px", borderRadius: 8,
+                    border: `1px solid ${T.border}`,
+                    background: "transparent",
+                    color: T.textMuted,
+                    fontSize: 12, cursor: "pointer",
+                  }}
+                  title="Clear draft"
+                >
+                  ✕ Clear
+                </button>
+                <button
                   onClick={() => copy(editedSubject + "\n\n" + editedBody, "all")}
                   style={{
                     padding: "7px 14px", borderRadius: 8,
@@ -486,9 +516,16 @@ export function EmailView({ T }) {
                 }}
               />
               <div style={{ marginTop: 8, display: "flex", gap: 8, flexShrink: 0 }}>
-                <span style={{ fontSize: 11, color: T.textMuted }}>
-                  {editedBody.trim().split(/\s+/).filter(Boolean).length} words
-                </span>
+                {(() => {
+                  const wc = editedBody.trim().split(/\s+/).filter(Boolean).length;
+                  const wcColor = wc === 0 ? T.textMuted : wc < 40 ? T.amber : wc > 150 ? T.amber : T.green;
+                  const wcHint = wc === 0 ? "" : wc < 40 ? " (too short)" : wc > 150 ? " (too long)" : " ✓";
+                  return (
+                    <span style={{ fontSize: 11, color: wcColor }}>
+                      {wc} words{wcHint}
+                    </span>
+                  );
+                })()}
                 {activeLead?.fitScore && (
                   <span style={{ fontSize: 11, color: T.textMuted }}>
                     · {activeLead.fitScore}% fit score

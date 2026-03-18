@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { useApp } from "../context/AppContext.jsx";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -139,7 +140,10 @@ function HorizBar({ label, value, pctVal, maxPct, color, subLabel, T }) {
 // ─── Main View ────────────────────────────────────────────────────────────────
 
 export function AnalyticsView({ T }) {
-  const { leads, runs } = useApp();
+  const { leads, runs, settings } = useApp();
+  const [icpLoading, setIcpLoading] = useState(false);
+  const [icpResult,  setIcpResult]  = useState(null);
+  const [icpError,   setIcpError]   = useState(null);
 
   // ── 1. Top stats ────────────────────────────────────────────────────────────
 
@@ -243,14 +247,12 @@ export function AnalyticsView({ T }) {
       days.push({ date: d, key: getDayKey(d), count: 0 });
     }
 
-    const keySet = new Set(days.map(d => d.key));
+    const dayMap = new Map(days.map(d => [d.key, d]));
     for (const l of leads) {
       if (!l.contactedAt) continue;
       const k = l.contactedAt.slice(0, 10);
-      if (keySet.has(k)) {
-        const day = days.find(d => d.key === k);
-        if (day) day.count++;
-      }
+      const day = dayMap.get(k);
+      if (day) day.count++;
     }
 
     const todayKey = getDayKey(today);
@@ -279,6 +281,52 @@ export function AnalyticsView({ T }) {
   }, []);
 
   const noLeads = leads.length === 0;
+
+  // ── 7. ICP Refinement ───────────────────────────────────────────────────────
+
+  async function runIcpAnalysis() {
+    if (!settings.anthropicKey) {
+      setIcpError("Add your Anthropic API key in Settings first.");
+      return;
+    }
+    setIcpLoading(true);
+    setIcpError(null);
+    setIcpResult(null);
+    try {
+      const prompt = `You are a B2B sales ICP analyst. Based on the following outreach data, provide actionable ICP refinement recommendations.
+
+Pipeline: ${topStats.total} total leads, ${topStats.contacted} contacted, response rate ${topStats.responseRate}%, qualification rate ${topStats.qualRate}%
+
+Response rate by title:
+${titleSegments.map(s => `- ${s.label}: ${s.rate}% (n=${s.total})`).join("\n") || "No data"}
+
+Response rate by company size:
+${sizeSegments.map(s => `- ${s.label}: ${s.rate}% (n=${s.total})`).join("\n") || "No data"}
+
+Return ONLY valid JSON:
+{
+  "summary": "2-sentence overall assessment",
+  "bestSegments": ["segment1", "segment2"],
+  "avoidSegments": ["segment1"],
+  "recommendations": ["actionable rec 1", "actionable rec 2", "actionable rec 3"],
+  "suggestedFocus": "one sentence on where to double down"
+}`;
+
+      const raw = await invoke("anthropic_chat", {
+        apiKey: settings.anthropicKey,
+        model: "claude-sonnet-4-6",
+        system: "You are a B2B sales analyst. Return only valid JSON.",
+        userMessage: prompt,
+        maxTokens: 512,
+      });
+      const clean = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+      setIcpResult(JSON.parse(clean));
+    } catch (e) {
+      setIcpError(String(e));
+    } finally {
+      setIcpLoading(false);
+    }
+  }
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
@@ -611,6 +659,116 @@ export function AnalyticsView({ T }) {
                   </div>
                 );
               })}
+            </div>
+          )}
+        </div>
+
+        {/* ── Section 7: ICP Refinement Wizard ── */}
+        <div style={{
+          background: T.card,
+          border: `1px solid ${T.border}`,
+          borderRadius: 10,
+          padding: "18px 20px",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: icpResult ? 16 : 0 }}>
+            <div>
+              <SectionHeader title="ICP Refinement" T={T} />
+              {!icpResult && !icpLoading && (
+                <div style={{ fontSize: 12, color: T.textMuted, marginTop: -8 }}>
+                  Let Claude analyze your response patterns and suggest ICP improvements.
+                </div>
+              )}
+            </div>
+            <button
+              onClick={runIcpAnalysis}
+              disabled={icpLoading || noLeads}
+              style={{
+                padding: "7px 16px", borderRadius: 8,
+                border: "none",
+                background: icpLoading || noLeads ? T.border : T.accent,
+                color: icpLoading || noLeads ? T.textMuted : "#fff",
+                fontSize: 12, fontWeight: 700,
+                cursor: icpLoading || noLeads ? "default" : "pointer",
+                display: "flex", alignItems: "center", gap: 6,
+                flexShrink: 0,
+                transition: "background 0.15s",
+              }}
+            >
+              {icpLoading ? (
+                <>
+                  <span style={{ width: 12, height: 12, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", animation: "spin 0.8s linear infinite", display: "inline-block" }} />
+                  Analyzing…
+                </>
+              ) : (
+                <>✦ {icpResult ? "Re-analyze" : "Analyze ICP"}</>
+              )}
+            </button>
+          </div>
+
+          {icpError && (
+            <div style={{ padding: "10px 12px", background: T.redDim, border: `1px solid ${T.red}44`, borderRadius: 8, fontSize: 12, color: T.red, marginTop: 8 }}>
+              {icpError}
+            </div>
+          )}
+
+          {icpResult && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {/* Summary */}
+              <div style={{ fontSize: 13, color: T.textSub, lineHeight: 1.6, padding: "10px 14px", background: T.surface, borderRadius: 8, border: `1px solid ${T.border}` }}>
+                {icpResult.summary}
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                {/* Best segments */}
+                {icpResult.bestSegments?.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: T.green, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                      Double down on
+                    </div>
+                    {icpResult.bestSegments.map((s, i) => (
+                      <div key={i} style={{ fontSize: 12, color: T.textSub, marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ color: T.green, fontSize: 11 }}>✓</span> {s}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Avoid segments */}
+                {icpResult.avoidSegments?.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: T.red, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                      Deprioritize
+                    </div>
+                    {icpResult.avoidSegments.map((s, i) => (
+                      <div key={i} style={{ fontSize: 12, color: T.textSub, marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ color: T.red, fontSize: 11 }}>✗</span> {s}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Recommendations */}
+              {icpResult.recommendations?.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+                    Recommendations
+                  </div>
+                  {icpResult.recommendations.map((r, i) => (
+                    <div key={i} style={{ fontSize: 12, color: T.textSub, marginBottom: 6, display: "flex", alignItems: "flex-start", gap: 8 }}>
+                      <span style={{ color: T.accent, fontWeight: 700, flexShrink: 0 }}>{i + 1}.</span> {r}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Suggested focus */}
+              {icpResult.suggestedFocus && (
+                <div style={{ padding: "10px 14px", background: T.accentGlow, border: `1px solid ${T.accentDim}`, borderRadius: 8 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: T.accent, textTransform: "uppercase", letterSpacing: "0.06em" }}>Focus: </span>
+                  <span style={{ fontSize: 12, color: T.textSub }}>{icpResult.suggestedFocus}</span>
+                </div>
+              )}
             </div>
           )}
         </div>

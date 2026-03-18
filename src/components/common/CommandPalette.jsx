@@ -95,10 +95,8 @@ export function CommandPalette({ T, onClose, onSwitchTab }) {
       const { tab } = item.data;
       if (tab) {
         onSwitchTab(tab);
-      }
-      // "open-settings" — could emit a custom event for now
-      if (item.data.id === "open-settings") {
-        window.dispatchEvent(new CustomEvent("ef:open-settings"));
+      } else if (item.data.id === "open-settings") {
+        onSwitchTab("settings");
       }
     }
     onClose();

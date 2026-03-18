@@ -1,3 +1,4 @@
+import { invoke }            from "@tauri-apps/api/core";
 import { useApp }            from "../context/AppContext.jsx";
 import { STALE_THRESHOLD_MS } from "../constants/outreach.js";
 import { useDailyStats }      from "../hooks/useDailyStats.js";
@@ -19,7 +20,7 @@ function getInitials(name = "") {
 
 function openMailto(email, name = "") {
   const subject = encodeURIComponent(`Following up — ${name}`);
-  window.open(`mailto:${email}?subject=${subject}`, "_blank");
+  invoke("open_url", { url: `mailto:${email}?subject=${subject}` });
 }
 
 // ─── Small shared UI pieces ───────────────────────────────────────────────────
@@ -148,7 +149,7 @@ function ReadySection({ leads, updateLead, T, onContact }) {
     updateLead(lead.id, (l) => ({
       ...l,
       outreachStatus: "contacted",
-      contactedAt: Date.now(),
+      contactedAt: new Date().toISOString(),
     }));
     onContact?.();
   };
@@ -235,7 +236,7 @@ function FollowUpSection({ leads, updateLead, T }) {
     (l) =>
       l.outreachStatus === "contacted" &&
       l.contactedAt &&
-      Date.now() - l.contactedAt > STALE_THRESHOLD_MS
+      Date.now() - new Date(l.contactedAt).getTime() > STALE_THRESHOLD_MS
   );
 
   const handleFollowUp = (lead) => {
@@ -243,7 +244,7 @@ function FollowUpSection({ leads, updateLead, T }) {
     updateLead(lead.id, (l) => ({
       ...l,
       followUpCount: (l.followUpCount || 0) + 1,
-      lastFollowUpAt: Date.now(),
+      lastFollowUpAt: new Date().toISOString(),
     }));
   };
 
@@ -321,11 +322,11 @@ function QualifySection({ leads, updateLead, T }) {
   const responded = leads.filter((l) => l.outreachStatus === "responded");
 
   const handleQualified = (lead) => {
-    updateLead(lead.id, (l) => ({ ...l, outreachStatus: "qualified", qualifiedAt: Date.now() }));
+    updateLead(lead.id, (l) => ({ ...l, outreachStatus: "qualified", qualifiedAt: new Date().toISOString() }));
   };
 
   const handleDead = (lead) => {
-    updateLead(lead.id, (l) => ({ ...l, outreachStatus: "dead", deadAt: Date.now() }));
+    updateLead(lead.id, (l) => ({ ...l, outreachStatus: "dead", deadAt: new Date().toISOString() }));
   };
 
   return (
