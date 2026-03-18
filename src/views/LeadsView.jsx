@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useApp }          from "../context/AppContext.jsx";
 import { LeadsTable }      from "../components/leads/LeadsTable.jsx";
 import { LeadsSummaryBar } from "../components/leads/LeadsSummaryBar.jsx";
@@ -8,6 +8,7 @@ import { BulkActionBar }   from "../components/leads/BulkActionBar.jsx";
 import { AddLeadModal }    from "../components/leads/AddLeadModal.jsx";
 import { UndoToast }       from "../components/leads/UndoToast.jsx";
 import { HookPickerModal } from "../components/leads/HookPickerModal.jsx";
+import { CsvImportModal } from "../components/leads/CsvImportModal.jsx";
 import { useLeadsFilter, useLeadsSummary } from "../hooks/useLeadsFilter.js";
 import { updateOutreachStatus }            from "../utils/updateOutreachStatus.js";
 import { useSelection }    from "../hooks/useSelection.js";
@@ -24,6 +25,8 @@ export function LeadsView({ T, onRequestSwitchTab }) {
   const [showDetail, setShowDetail] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showHookPicker, setShowHookPicker] = useState(false);
+  const [showCsvImport, setShowCsvImport] = useState(false);
+  const [tagFilter, setTagFilter] = useState(null); // null = all, "tagname" = filtered
   const [toast, setToast]           = useState(null);
 
   const { selected, toggle, selectAll, clear } = useSelection();
@@ -78,7 +81,16 @@ export function LeadsView({ T, onRequestSwitchTab }) {
   }, []);
 
   const filteredLeads = useLeadsFilter(leads, filters, showDead);
+  const tagFilteredLeads = tagFilter
+    ? filteredLeads.filter(l => (l.tags || []).includes(tagFilter))
+    : filteredLeads;
   const summary       = useLeadsSummary(leads);
+
+  const allTags = useMemo(() => {
+    const tagSet = new Set();
+    leads.forEach(l => (l.tags || []).forEach(t => tagSet.add(t)));
+    return Array.from(tagSet).sort();
+  }, [leads]);
   const focusedLead   = leads.find((l) => l.id === focusedId) || null;
 
   // ── Keyboard ──────────────────────────────────────────────────────────────
@@ -128,16 +140,38 @@ export function LeadsView({ T, onRequestSwitchTab }) {
 
         <button onClick={() => setShowAddModal(true)} style={{ background: T.accent, border: "none", borderRadius: 7, padding: "5px 11px", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>+ Lead</button>
         <button onClick={() => exportLeadsCSV(filteredLeads)} style={{ background: "transparent", border: `1px solid ${T.border}`, borderRadius: 7, padding: "5px 9px", color: T.textSub, fontSize: 11, cursor: "pointer" }} title="Export to CSV">↓ CSV</button>
+        <button onClick={() => setShowCsvImport(true)} style={{ background: "transparent", border: `1px solid ${T.border}`, borderRadius: 7, padding: "5px 9px", color: T.textSub, fontSize: 11, cursor: "pointer" }} title="Import from CSV">↑ CSV</button>
         <button onClick={() => setShowDead((p) => !p)} style={{ background: showDead ? (isDark ? "#1e293b" : "#f1f5f9") : "transparent", border: `1px solid ${T.border}`, borderRadius: 7, padding: "5px 9px", color: T.textSub, fontSize: 11, cursor: "pointer" }}>
           {showDead ? "Hide dead" : "Dead"}
         </button>
-        <span style={{ marginLeft: "auto", fontSize: 11, color: T.muted }}>
+        <span style={{ marginLeft: "auto", fontSize: 11, color: T.textMuted }}>
           {filteredLeads.length} leads
         </span>
       </div>
 
       {/* Summary bar */}
       <LeadsSummaryBar summary={summary} filters={filters} onFilter={handleFilter} isDark={isDark} />
+
+      {/* Tag filter chips */}
+      {allTags.length > 0 && (
+        <div style={{ display: "flex", gap: 4, padding: "6px 16px", borderBottom: `1px solid ${T.border}`, flexWrap: "wrap", flexShrink: 0 }}>
+          <button
+            onClick={() => setTagFilter(null)}
+            style={{ fontSize: 11, padding: "2px 8px", borderRadius: 9999, border: `1px solid ${tagFilter === null ? T.accent : T.border}`, background: tagFilter === null ? T.accentGlow : "transparent", color: tagFilter === null ? T.accent : T.textMuted, cursor: "pointer" }}
+          >
+            All
+          </button>
+          {allTags.map(tag => (
+            <button
+              key={tag}
+              onClick={() => setTagFilter(tagFilter === tag ? null : tag)}
+              style={{ fontSize: 11, padding: "2px 8px", borderRadius: 9999, border: `1px solid ${tagFilter === tag ? T.accent : T.border}`, background: tagFilter === tag ? T.accentGlow : "transparent", color: tagFilter === tag ? T.accent : T.textMuted, cursor: "pointer" }}
+            >
+              {tag}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Bulk bar */}
       {selected.size > 0 && (
@@ -154,7 +188,7 @@ export function LeadsView({ T, onRequestSwitchTab }) {
       {/* Table + Detail */}
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
         <LeadsTable
-          leads={filteredLeads}
+          leads={tagFilteredLeads}
           isDark={isDark}
           onStatusUpdate={handleStatusUpdate}
           onCopy={handleCopy}
@@ -177,6 +211,14 @@ export function LeadsView({ T, onRequestSwitchTab }) {
 
       {/* Overlays */}
       {showAddModal && <AddLeadModal isDark={isDark} onAdd={handleAddLead} onClose={() => setShowAddModal(false)} />}
+      {showCsvImport && (
+        <CsvImportModal
+          isDark={isDark}
+          T={T}
+          onImport={(newLeads) => { addLeads(newLeads); setShowCsvImport(false); }}
+          onClose={() => setShowCsvImport(false)}
+        />
+      )}
       {showHookPicker && (
         <HookPickerModal
           selectedLeadIds={selected}

@@ -7,6 +7,7 @@ import { TemplatePickerPopover } from "./TemplatePickerPopover.jsx";
 import { generateMailtoUrl }     from "../../utils/generateMailto.js";
 import { fullDate, relativeTime } from "../../utils/relativeTime.js";
 import { useApp }                from "../../context/AppContext.jsx";
+import { TagPill }               from "./TagPill.jsx";
 
 function Avatar({ name, size = 44, isDark }) {
   const initials = name
@@ -49,8 +50,9 @@ export function LeadDetailPanel({ lead, isDark, onStatusUpdate, onClose }) {
   const [addingNote, setAddingNote]               = useState(false);
   const [copiedEmail, setCopiedEmail]             = useState(false);
   const [selectedTemplate, setSelectedTemplate]   = useState(null);
+  const [tagInput, setTagInput]                   = useState("");
 
-  const { templates: ctxTemplates, deleteLead } = useApp();
+  const { templates: ctxTemplates, deleteLead, tagLead, untagLead } = useApp();
   const templates = ctxTemplates;
   const bg        = isDark ? "#0f172a" : "#ffffff";
   const border    = isDark ? "#1e293b" : "#f1f5f9";
@@ -327,6 +329,50 @@ export function LeadDetailPanel({ lead, isDark, onStatusUpdate, onClose }) {
             </button>
           </div>
         )}
+
+        {/* Tags */}
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Tags</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
+            {(lead.tags || []).map(tag => (
+              <TagPill
+                key={tag}
+                tag={tag}
+                isDark={isDark}
+                onRemove={(t) => untagLead(lead.id, t)}
+              />
+            ))}
+            {(lead.tags || []).length === 0 && (
+              <span style={{ fontSize: 11, color: muted }}>No tags</span>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 4 }}>
+            <input
+              value={tagInput}
+              onChange={e => setTagInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter" && tagInput.trim()) {
+                  tagLead(lead.id, tagInput.trim());
+                  setTagInput("");
+                }
+              }}
+              placeholder="Add tag…"
+              style={{
+                flex: 1, fontSize: 11, padding: "4px 8px",
+                background: isDark ? "#0a0f1a" : "#f8fafc",
+                border: `1px solid ${border}`,
+                borderRadius: 6, color: txt, outline: "none",
+              }}
+            />
+            <button
+              onClick={() => { if (tagInput.trim()) { tagLead(lead.id, tagInput.trim()); setTagInput(""); } }}
+              disabled={!tagInput.trim()}
+              style={{ padding: "4px 8px", fontSize: 11, background: accent, color: "#fff", border: "none", borderRadius: 6, cursor: tagInput.trim() ? "pointer" : "not-allowed", opacity: tagInput.trim() ? 1 : 0.5 }}
+            >
+              Add
+            </button>
+          </div>
+        </div>
 
         {/* Add Note */}
         <div>

@@ -128,6 +128,109 @@ async fn apollo_bulk_match(api_key: String, details: Vec<Value>) -> Result<Value
 }
 
 #[tauri::command]
+fn cache_apollo_contacts(contacts: Vec<serde_json::Value>, state: tauri::State<'_, DbConn>) -> Result<usize, String> {
+    let db = state.0.lock().map_err(|e| e.to_string())?;
+    let mut count = 0usize;
+    for contact in &contacts {
+        let apollo_id = contact.get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if apollo_id.is_empty() { continue; }
+        let data = serde_json::to_string(contact).map_err(|e| e.to_string())?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        db.execute(
+            "INSERT OR REPLACE INTO apollo_contact_cache (apollo_id, data, cached_at) VALUES (?1, ?2, ?3)",
+            rusqlite::params![apollo_id, data, now],
+        ).map_err(|e| e.to_string())?;
+        count += 1;
+    }
+    Ok(count)
+}
+
+#[tauri::command]
+fn get_cached_apollo_ids(state: tauri::State<'_, DbConn>) -> Result<Vec<String>, String> {
+    let db = state.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = db.prepare("SELECT apollo_id FROM apollo_contact_cache")
+        .map_err(|e| e.to_string())?;
+    let ids: Vec<String> = stmt.query_map([], |row| row.get(0))
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(ids)
+}
+
+#[tauri::command]
+fn get_cached_apollo_contacts(ids: Vec<String>, state: tauri::State<'_, DbConn>) -> Result<Vec<serde_json::Value>, String> {
+    let db = state.0.lock().map_err(|e| e.to_string())?;
+    let mut results = Vec::new();
+    for id in &ids {
+        let row: rusqlite::Result<String> = db.query_row(
+            "SELECT data FROM apollo_contact_cache WHERE apollo_id = ?1",
+            rusqlite::params![id],
+            |row| row.get(0),
+        );
+        if let Ok(data) = row {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&data) {
+                results.push(val);
+            }
+        }
+    }
+    Ok(results)
+}
+
+#[tauri::command]
+fn add_to_suppress_list(entry: String, entry_type: String, state: tauri::State<'_, DbConn>) -> Result<String, String> {
+    let db = state.0.lock().map_err(|e| e.to_string())?;
+    let id = format!("sup-{}", std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0));
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    db.execute(
+        "INSERT OR IGNORE INTO suppress_list (id, entry, entry_type, created_at) VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![id, entry.to_lowercase(), entry_type, now],
+    ).map_err(|e| e.to_string())?;
+    Ok(id)
+}
+
+#[tauri::command]
+fn remove_from_suppress_list(id: String, state: tauri::State<'_, DbConn>) -> Result<(), String> {
+    let db = state.0.lock().map_err(|e| e.to_string())?;
+    db.execute("DELETE FROM suppress_list WHERE id = ?1", rusqlite::params![id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn get_suppress_list(state: tauri::State<'_, DbConn>) -> Result<Vec<serde_json::Value>, String> {
+    let db = state.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = db.prepare("SELECT id, entry, entry_type, created_at FROM suppress_list ORDER BY created_at DESC")
+        .map_err(|e| e.to_string())?;
+    let rows: Vec<serde_json::Value> = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, i64>(3)?,
+        ))
+    })
+    .map_err(|e| e.to_string())?
+    .filter_map(|r| r.ok())
+    .map(|(id, entry, entry_type, created_at)| serde_json::json!({
+        "id": id, "entry": entry, "entry_type": entry_type, "created_at": created_at
+    }))
+    .collect();
+    Ok(rows)
+}
+
+#[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
     open::that(&url).map_err(|e| e.to_string())
 }
@@ -136,9 +239,9 @@ fn open_url(url: String) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let db_path = tauri::api::path::data_dir()
-        .map(|p| p.join("dev.foxworks.eventfold").join("eventfold.db"))
-        .and_then(|p| {
+    let db_path = dirs::data_dir()
+        .map(|p: std::path::PathBuf| p.join("dev.foxworks.eventfold").join("eventfold.db"))
+        .and_then(|p: std::path::PathBuf| {
             std::fs::create_dir_all(p.parent().unwrap()).ok()?;
             Some(p)
         });
@@ -155,6 +258,12 @@ pub fn run() {
             anthropic_chat,
             apollo_people_search,
             apollo_bulk_match,
+            cache_apollo_contacts,
+            get_cached_apollo_ids,
+            get_cached_apollo_contacts,
+            add_to_suppress_list,
+            remove_from_suppress_list,
+            get_suppress_list,
             open_url,
             credentials::save_credential,
             credentials::get_credential,

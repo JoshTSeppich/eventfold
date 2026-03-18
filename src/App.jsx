@@ -7,6 +7,7 @@ import { FeaturesView }   from "./views/FeaturesView.jsx";
 import { FollowUpsView }  from "./views/FollowUpsView.jsx";
 import { AnalyticsView }  from "./views/AnalyticsView.jsx";
 import { TodayView }      from "./views/TodayView.jsx";
+import { ActivityView }   from "./views/ActivityView.jsx";
 import { SettingsModal }  from "./components/common/SettingsModal.jsx";
 import { CommandPalette } from "./components/common/CommandPalette.jsx";
 import { TemplateManager } from "./components/common/TemplateManager.jsx";
@@ -66,6 +67,7 @@ const TABS = [
   { id: "analytics", label: "Analytics",  icon: "◷" },
   { id: "features",  label: "Features",   icon: "◇" },
   { id: "today",     label: "Today",      icon: "✦" },
+  { id: "activity",  label: "Activity",   icon: "◳" },
 ];
 
 // ─── Global styles ────────────────────────────────────────────────────────────
@@ -288,6 +290,7 @@ function Shell() {
         {activeTab === "analytics" && <AnalyticsView  T={T} />}
         {activeTab === "features"  && <FeaturesView   T={T} />}
         {activeTab === "today"     && <TodayView      T={T} onSwitchTab={switchTab} />}
+        {activeTab === "activity"  && <ActivityView   T={T} />}
       </div>
 
       {/* ── Overlays ─────────────────────────────────────────────────────── */}

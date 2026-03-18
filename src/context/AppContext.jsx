@@ -11,6 +11,12 @@ const SETTINGS_KEY = "ef_settings";
 const DRAFTS_KEY   = "ef_email_drafts";
 const HOOKS_KEY    = "ef_saved_hooks_v1";
 const MAX_RUNS     = 15;
+const ACTIVITY_KEY = "ef_activity_v1";
+const MAX_ACTIVITY = 200;
+
+function loadActivity() {
+  try { return JSON.parse(localStorage.getItem(ACTIVITY_KEY) || "[]"); } catch { return []; }
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -38,8 +44,11 @@ function loadRuns() {
 }
 
 function loadSettings() {
-  try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"); }
-  catch { return {}; }
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
+    return { bookingUrl: "", weeklyGoal: 250, ...saved };
+  }
+  catch { return { bookingUrl: "", weeklyGoal: 250 }; }
 }
 
 // drafts: { [leadId]: { subject, body, tone, goal, updatedAt } }
@@ -70,6 +79,7 @@ export function AppProvider({ children }) {
   const [settings,   setSettings]   = useState(loadSettings);
   const [drafts,     setDrafts]     = useState(loadDrafts);
   const [savedHooks, setSavedHooks] = useState(loadSavedHooks);
+  const [activityLog, setActivityLog] = useState(loadActivity);
 
   // Persist
   useEffect(() => { localStorage.setItem(LEADS_KEY, JSON.stringify(leads)); },     [leads]);
@@ -79,6 +89,9 @@ export function AppProvider({ children }) {
   useEffect(() => { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }, [settings]);
   useEffect(() => { localStorage.setItem(DRAFTS_KEY,   JSON.stringify(drafts));   }, [drafts]);
   useEffect(() => { localStorage.setItem(HOOKS_KEY,    JSON.stringify(savedHooks)); }, [savedHooks]);
+  useEffect(() => {
+    localStorage.setItem(ACTIVITY_KEY, JSON.stringify(activityLog.slice(0, MAX_ACTIVITY)));
+  }, [activityLog]);
 
   // ── Lead actions ────────────────────────────────────────────────────────────
 
@@ -111,6 +124,7 @@ export function AppProvider({ children }) {
           photoUrl:       l.photoUrl      || null,
           qualChecks:     l.qualChecks    || [],
           runId:          l.runId         || null,
+          tags:           l.tags          || [],
         }));
       return [...fresh, ...prev];
     });
@@ -170,6 +184,37 @@ export function AppProvider({ children }) {
     setSavedHooks((prev) => prev.map((h) => h.id === hookId ? { ...h, appliedCount: (h.appliedCount || 0) + 1 } : h));
   }, []);
 
+  // ── Activity log ──────────────────────────────────────────────────────────────
+
+  const addActivity = useCallback((action, leadId, detail = "") => {
+    const lead = leads.find(l => l.id === leadId);
+    setActivityLog(prev => [{
+      id: crypto.randomUUID(),
+      leadId,
+      leadName: lead?.name || "",
+      company: lead?.company || "",
+      action,
+      detail,
+      ts: new Date().toISOString(),
+    }, ...prev].slice(0, MAX_ACTIVITY));
+  }, [leads]);
+
+  // ── Tag system ────────────────────────────────────────────────────────────────
+
+  const tagLead = useCallback((leadId, tag) => {
+    setLeads(prev => prev.map(l =>
+      l.id === leadId
+        ? { ...l, tags: l.tags?.includes(tag) ? l.tags : [...(l.tags || []), tag.trim()] }
+        : l
+    ));
+  }, []);
+
+  const untagLead = useCallback((leadId, tag) => {
+    setLeads(prev => prev.map(l =>
+      l.id === leadId ? { ...l, tags: (l.tags || []).filter(t => t !== tag) } : l
+    ));
+  }, []);
+
   return (
     <AppContext.Provider value={{
       isDark, setIsDark,
@@ -179,6 +224,8 @@ export function AppProvider({ children }) {
       settings, updateSettings,
       drafts, saveDraft, clearDraft,
       savedHooks, starHook, unstarHook, incrementHookApplied,
+      activityLog, addActivity,
+      tagLead, untagLead,
     }}>
       {children}
     </AppContext.Provider>

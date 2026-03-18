@@ -15,6 +15,40 @@ const STAGES = [
   { id: "apollo", label: "Search & Enrich",     model: "Apollo" },
 ];
 
+// ─── Feature 1: Section hash cache ───────────────────────────────────────────
+
+function hashStr(s) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = (h * 0x01000193) >>> 0;
+  }
+  return h.toString(16);
+}
+
+const CACHE_KEY = "ef_intel_section_cache_v1";
+
+function loadSectionCache() {
+  try { return JSON.parse(localStorage.getItem(CACHE_KEY) || "{}"); } catch { return {}; }
+}
+function saveSectionCache(cache) {
+  localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+}
+
+// ─── Feature 3: Pipeline resume from failure ──────────────────────────────────
+
+let _pipelineSession = {};
+
+// ─── Feature 4: Rate limit memory ────────────────────────────────────────────
+
+const RL_KEY = "ef_rl_cooldown";
+function getRlCooldown() {
+  try { return parseInt(localStorage.getItem(RL_KEY) || "0", 10); } catch { return 0; }
+}
+function setRlCooldown(ms = 60000) {
+  localStorage.setItem(RL_KEY, String(Date.now() + ms));
+}
+
 // ─── Scoring helpers ──────────────────────────────────────────────────────────
 
 function emailScore(c) {
@@ -319,7 +353,7 @@ function ContactCard({ contact, checks, isDark, T, selected, onToggle }) {
 // ─── IntelView ────────────────────────────────────────────────────────────────
 
 export function IntelView({ T, onSendToLeads }) {
-  const { isDark, settings, saveRun, addLeads, savedHooks, starHook, unstarHook } = useApp();
+  const { isDark, settings, saveRun, addLeads, savedHooks, starHook, unstarHook, leads } = useApp();
   const [markdown, setMarkdown]     = useState("");
   const [stageStatus, setStageStatus] = useState({});
   const [contacts, setContacts]     = useState([]);
@@ -334,6 +368,7 @@ export function IntelView({ T, onSendToLeads }) {
   const [filter, setFilter]         = useState("all");
   const [topHooks, setTopHooks]     = useState([]);
   const [hooksExpanded, setHooksExpanded] = useState(false);
+  const [dupeCount, setDupeCount]   = useState(0);
   const abortRef = useRef(false);
 
   const anthropicKey = settings.anthropicKey || "";
@@ -354,10 +389,36 @@ export function IntelView({ T, onSendToLeads }) {
         return await invoke("anthropic_chat", { apiKey: anthropicKey, model, system, userMessage, maxTokens });
       } catch (e) {
         if (String(e).includes("429") && attempt < 2) {
+          setRlCooldown(attempt === 0 ? 30000 : 60000);
           await new Promise((r) => setTimeout(r, (attempt + 1) * 10000));
         } else throw e;
       }
     }
+  }
+
+  // ─── Feature 2: ICP learning loop ──────────────────────────────────────────
+
+  function buildIcpContext() {
+    if (!leads || !leads.length) return "";
+    const contacted = leads.filter(l => ["contacted","responded","qualified"].includes(l.outreachStatus));
+    if (contacted.length < 5) return "";
+
+    // Response rate by title segment
+    const titleMap = {};
+    for (const l of leads) {
+      const seg = (l.title || "").split(/[\s,/]+/)[0] || "Other";
+      if (!titleMap[seg]) titleMap[seg] = { total: 0, responded: 0 };
+      titleMap[seg].total++;
+      if (["responded","qualified"].includes(l.outreachStatus)) titleMap[seg].responded++;
+    }
+    const titleStats = Object.entries(titleMap)
+      .filter(([,v]) => v.total >= 3)
+      .sort((a,b) => (b[1].responded/b[1].total) - (a[1].responded/a[1].total))
+      .slice(0, 5)
+      .map(([k,v]) => `${k}: ${Math.round(v.responded/v.total*100)}% response (n=${v.total})`);
+
+    if (!titleStats.length) return "";
+    return `\n\nPREVIOUS CAMPAIGN DATA (use to prioritize):\n${titleStats.join("\n")}`;
   }
 
   function resetPipeline() {
@@ -368,6 +429,8 @@ export function IntelView({ T, onSendToLeads }) {
     setSelectedIds(new Set());
     setTopHooks([]);
     setHooksExpanded(false);
+    setDupeCount(0);
+    _pipelineSession = {};
   }
 
   async function run() {
@@ -376,53 +439,147 @@ export function IntelView({ T, onSendToLeads }) {
     setRunning(true);
     if (!apolloKey) { setError("Apollo API key not set — add it in Settings"); setRunning(false); return; }
     const runId = `run-${Date.now()}`;
+
+    // ── Feature 4: Rate limit guard ────────────────────────────────────────
+    const cooldownUntil = getRlCooldown();
+    if (cooldownUntil > Date.now()) {
+      const mins = Math.ceil((cooldownUntil - Date.now()) / 60000);
+      setError(`Rate limited — retry in ~${mins} minute${mins === 1 ? "" : "s"}`);
+      setRunning(false);
+      return;
+    }
+
     resetPipeline();
     STAGES.forEach((s) => setSt(s.id, "pending"));
+
+    // ── Feature 1: Section hash cache ──────────────────────────────────────
+    const sectionCache = loadSectionCache();
+    const newCache = { ...sectionCache };
+
+    // ── Feature 3: Pipeline resume check ───────────────────────────────────
+    const markdownHash = hashStr(markdown);
+    const canResume = _pipelineSession.markdownHash === markdownHash && _pipelineSession.queries;
+    if (!canResume) _pipelineSession = { markdownHash };
 
     try {
       // ── Stage 1: Extract Apollo queries ───────────────────────────────────
       setSt("haiku1", "active");
-      const queriesSection = extractSection(markdown, "Apollo Search Queries", "Search Queries", "Queries");
-      const q1raw = await chat(HAIKU,
-        "Extract Apollo search query objects. Return ONLY valid JSON array. Each object must have 'label' (string) and 'filters' (object).",
-        queriesSection, 1024);
-      const apolloQueries = parseJson(q1raw);
-      setSt("haiku1", "done"); addLog("haiku1", "Extract Queries", { count: apolloQueries.length });
+      let apolloQueries;
+      if (_pipelineSession.queries) {
+        apolloQueries = _pipelineSession.queries;
+        addLog("haiku1", "⏭ Resumed", { count: apolloQueries.length });
+        setSt("haiku1", "done");
+      } else {
+        const queriesSection = extractSection(markdown, "Apollo Search Queries", "Search Queries", "Queries");
+        const h1Hash = hashStr(queriesSection);
+        if (sectionCache["haiku1_hash"] === h1Hash) {
+          apolloQueries = sectionCache["haiku1_result"];
+          addLog("haiku1", "📦 Cached", { count: apolloQueries.length });
+          setSt("haiku1", "done");
+        } else {
+          const q1raw = await chat(HAIKU,
+            "Extract Apollo search query objects. Return ONLY valid JSON array. Each object must have 'label' (string) and 'filters' (object).",
+            queriesSection, 1024);
+          apolloQueries = parseJson(q1raw);
+          newCache["haiku1_hash"] = h1Hash;
+          newCache["haiku1_result"] = apolloQueries;
+          setSt("haiku1", "done"); addLog("haiku1", "Extract Queries", { count: apolloQueries.length });
+        }
+      }
+      _pipelineSession.queries = apolloQueries;
       if (abortRef.current) { setRunning(false); return; }
 
       // ── Stage 2: Extract ICP targets ──────────────────────────────────────
       setSt("haiku2", "active");
-      const icpSection = extractSection(markdown, "ICP Profile", "Qualifying Criteria", "Target Audience");
-      const q2raw = await chat(HAIKU,
-        'Extract person titles and seniority levels. Return ONLY valid JSON: { "personTitles": [...], "seniorityLevels": [...] }. Seniority values must be from: c_suite, vp, director, manager, senior, founder.',
-        icpSection, 512);
-      const { personTitles = ["CTO","Founder","VP Engineering"], seniorityLevels = ["c_suite","vp","director","founder"] } = parseJson(q2raw);
-      setSt("haiku2", "done"); addLog("haiku2", "ICP Targets", { personTitles, seniorityLevels });
+      let personTitles, seniorityLevels;
+      if (_pipelineSession.personTitles) {
+        personTitles = _pipelineSession.personTitles;
+        seniorityLevels = _pipelineSession.seniorityLevels;
+        addLog("haiku2", "⏭ Resumed", { personTitles, seniorityLevels });
+        setSt("haiku2", "done");
+      } else {
+        const icpSection = extractSection(markdown, "ICP Profile", "Qualifying Criteria", "Target Audience");
+        const h2Hash = hashStr(icpSection);
+        if (sectionCache["haiku2_hash"] === h2Hash) {
+          ({ personTitles = ["CTO","Founder","VP Engineering"], seniorityLevels = ["c_suite","vp","director","founder"] } = sectionCache["haiku2_result"]);
+          addLog("haiku2", "📦 Cached", { personTitles, seniorityLevels });
+          setSt("haiku2", "done");
+        } else {
+          const icpWithContext = icpSection + buildIcpContext();
+          const q2raw = await chat(HAIKU,
+            'Extract person titles and seniority levels. Return ONLY valid JSON: { "personTitles": [...], "seniorityLevels": [...] }. Seniority values must be from: c_suite, vp, director, manager, senior, founder.',
+            icpWithContext, 512);
+          ({ personTitles = ["CTO","Founder","VP Engineering"], seniorityLevels = ["c_suite","vp","director","founder"] } = parseJson(q2raw));
+          newCache["haiku2_hash"] = h2Hash;
+          newCache["haiku2_result"] = { personTitles, seniorityLevels };
+          setSt("haiku2", "done"); addLog("haiku2", "ICP Targets", { personTitles, seniorityLevels });
+        }
+      }
+      _pipelineSession.personTitles = personTitles;
+      _pipelineSession.seniorityLevels = seniorityLevels;
       if (abortRef.current) { setRunning(false); return; }
 
       // ── Stage 3: Extract hooks ────────────────────────────────────────────
       setSt("haiku3", "active");
-      const hooksSection = extractSection(markdown, "Sales Angles", "Sales Hooks", "Hooks", "Messaging");
-      const q3raw = await chat(HAIKU,
-        'Extract 3 sales hooks. Return ONLY valid JSON: { "topHooks": [{ "angle": "name", "hook": "one sentence pitch" }] }',
-        hooksSection, 512);
-      const { topHooks = [] } = parseJson(q3raw);
-      setTopHooks(topHooks);
-      setSt("haiku3", "done"); addLog("haiku3", "Sales Hooks", { count: topHooks.length });
+      let topHooksResult;
+      if (_pipelineSession.topHooks) {
+        topHooksResult = _pipelineSession.topHooks;
+        setTopHooks(topHooksResult);
+        addLog("haiku3", "⏭ Resumed", { count: topHooksResult.length });
+        setSt("haiku3", "done");
+      } else {
+        const hooksSection = extractSection(markdown, "Sales Angles", "Sales Hooks", "Hooks", "Messaging");
+        const h3Hash = hashStr(hooksSection);
+        if (sectionCache["haiku3_hash"] === h3Hash) {
+          topHooksResult = sectionCache["haiku3_result"];
+          setTopHooks(topHooksResult);
+          addLog("haiku3", "📦 Cached", { count: topHooksResult.length });
+          setSt("haiku3", "done");
+        } else {
+          const q3raw = await chat(HAIKU,
+            'Extract 3 sales hooks. Return ONLY valid JSON: { "topHooks": [{ "angle": "name", "hook": "one sentence pitch" }] }',
+            hooksSection, 512);
+          ({ topHooks: topHooksResult = [] } = parseJson(q3raw));
+          setTopHooks(topHooksResult);
+          newCache["haiku3_hash"] = h3Hash;
+          newCache["haiku3_result"] = topHooksResult;
+          setSt("haiku3", "done"); addLog("haiku3", "Sales Hooks", { count: topHooksResult.length });
+        }
+      }
+      _pipelineSession.topHooks = topHooksResult;
       if (abortRef.current) { setRunning(false); return; }
 
       // ── Stage 4: Extract qual checklist ───────────────────────────────────
       setSt("haiku4", "active");
       let extractedChecklist = [];
-      try {
-        const qualSection = extractSection(markdown, "Qualification Checklist", "Qualifying Criteria", "Qual");
-        const q4raw = await chat(HAIKU,
-          'Extract qualification criteria. Return ONLY valid JSON array: [{ "criterion": "text", "category": "title|size|industry|email|linkedin|location|other" }]',
-          qualSection, 512);
-        extractedChecklist = parseJson(q4raw);
-      } catch (_) {}
-      setChecklist(extractedChecklist);
-      setSt("haiku4", "done"); addLog("haiku4", "Qual Criteria", { count: extractedChecklist.length });
+      if (_pipelineSession.checklist) {
+        extractedChecklist = _pipelineSession.checklist;
+        setChecklist(extractedChecklist);
+        addLog("haiku4", "⏭ Resumed", { count: extractedChecklist.length });
+        setSt("haiku4", "done");
+      } else {
+        try {
+          const qualSection = extractSection(markdown, "Qualification Checklist", "Qualifying Criteria", "Qual");
+          const h4Hash = hashStr(qualSection);
+          if (sectionCache["haiku4_hash"] === h4Hash) {
+            extractedChecklist = sectionCache["haiku4_result"];
+            addLog("haiku4", "📦 Cached", { count: extractedChecklist.length });
+            setSt("haiku4", "done");
+          } else {
+            const q4raw = await chat(HAIKU,
+              'Extract qualification criteria. Return ONLY valid JSON array: [{ "criterion": "text", "category": "title|size|industry|email|linkedin|location|other" }]',
+              qualSection, 512);
+            extractedChecklist = parseJson(q4raw);
+            newCache["haiku4_hash"] = h4Hash;
+            newCache["haiku4_result"] = extractedChecklist;
+            setSt("haiku4", "done"); addLog("haiku4", "Qual Criteria", { count: extractedChecklist.length });
+          }
+        } catch (_) {
+          setSt("haiku4", "done"); addLog("haiku4", "Qual Criteria", { count: 0 });
+        }
+        setChecklist(extractedChecklist);
+      }
+      _pipelineSession.checklist = extractedChecklist;
       if (abortRef.current) { setRunning(false); return; }
 
       // ── Stage 5: Synthesize strategy ──────────────────────────────────────
@@ -430,23 +587,34 @@ export function IntelView({ T, onSendToLeads }) {
       const strategyPrompt = `Queries: ${JSON.stringify(apolloQueries.map((q, i) => ({ i, label: q.label })))}
 Titles: ${JSON.stringify(personTitles)}
 Seniority: ${JSON.stringify(seniorityLevels)}
-Hooks: ${JSON.stringify(topHooks)}
+Hooks: ${JSON.stringify(topHooksResult)}
 
 Pick the best 3 query indices. Merge and deduplicate titles (max 12). Select the primary hook.
-Return ONLY valid JSON: { "queryIndices": [0,1,2], "personTitles": [...], "seniorityLevels": [...], "primaryHook": "..." }`;
+Return ONLY valid JSON: { "queryIndices": [0,1,2], "personTitles": [...], "seniorityLevels": [...], "primaryHook": "..." }` + buildIcpContext();
       const q5raw = await chat(SONNET, "You are a B2B sales strategist.", strategyPrompt, 1024);
       const strategy = parseJson(q5raw);
       const selectedQueries = (strategy.queryIndices || [0, 1, 2]).slice(0, 3).map((i) => apolloQueries[i]).filter(Boolean);
       const finalTitles    = strategy.personTitles || personTitles;
       const finalSeniority = strategy.seniorityLevels || seniorityLevels;
-      const primaryHook    = strategy.primaryHook || topHooks[0]?.hook || "";
+      const primaryHook    = strategy.primaryHook || topHooksResult[0]?.hook || "";
       setTargetTitles(finalTitles);
       setSt("sonnet", "done"); addLog("sonnet", "Strategy", strategy);
+
+      // Save section cache after Stage 5 completes
+      saveSectionCache(newCache);
+
       if (abortRef.current) { setRunning(false); return; }
 
       // ── Stage 6: Apollo search ────────────────────────────────────────────
       setSt("apollo", "active");
-      const hookFn = (title) => pickHook(title, topHooks, primaryHook);
+      const hookFn = (title) => pickHook(title, topHooksResult, primaryHook);
+
+      // ── Feature 5: Cross-run dedup — load cached IDs ───────────────────
+      let cachedIds = new Set();
+      try {
+        const ids = await invoke("get_cached_apollo_ids", {});
+        ids.forEach(id => cachedIds.add(id));
+      } catch (_) {}
 
       const results = await Promise.all(
         selectedQueries.map(async (q) => {
@@ -457,8 +625,17 @@ Return ONLY valid JSON: { "queryIndices": [0,1,2], "personTitles": [...], "senio
       );
 
       const allContacts = deduplicateContacts(results);
-      // Add qual scores
-      const scored = allContacts.map((c) => {
+
+      // ── Feature 5: Filter out already-cached contacts ─────────────────
+      const brandNew = allContacts.filter(c => !cachedIds.has(c.id));
+      const alreadySeen = allContacts.length - brandNew.length;
+      setDupeCount(alreadySeen);
+      if (alreadySeen > 0) {
+        setQueryLog(prev => [...prev, { label: `📦 ${alreadySeen} already in cache (skipped)`, count: 0, tier: 0 }]);
+      }
+
+      // Add qual scores using only brandNew contacts
+      const scored = brandNew.map((c) => {
         const checks = runQualChecks(c, extractedChecklist, finalTitles);
         return { ...c, fitScore: fitScore(checks), qualChecks: checks, runId };
       });
@@ -468,6 +645,11 @@ Return ONLY valid JSON: { "queryIndices": [0,1,2], "personTitles": [...], "senio
       setSt("apollo", "done");
       setDone(true);
       addLog("apollo", "Results", { count: scored.length, withEmail: scored.filter((c) => c.email).length });
+
+      // ── Feature 5: Write new contacts to Apollo cache ─────────────────
+      try {
+        await invoke("cache_apollo_contacts", { contacts: scored });
+      } catch (_) {}
 
     } catch (err) {
       setError(String(err));
@@ -662,6 +844,7 @@ Return ONLY valid JSON: { "queryIndices": [0,1,2], "personTitles": [...], "senio
             <span style={{ fontSize: 12, fontWeight: 600, color: T.text }}>
               {contacts.length} contacts · {contacts.filter((c) => c.email).length} with email
             </span>
+            {dupeCount > 0 && <span style={{ fontSize: 11, color: T.textMuted }}>({dupeCount} seen before)</span>}
             <div style={{ display: "flex", gap: 4, marginLeft: 8 }}>
               {[["all", "All"], ["email", "Has Email"]].map(([v, l]) => (
                 <button key={v} onClick={() => setFilter(v)} style={{

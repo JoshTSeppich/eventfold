@@ -21,6 +21,17 @@ pub fn init_db(conn: &Connection) -> rusqlite::Result<()> {
             display_label TEXT NOT NULL,
             created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now')),
             UNIQUE(owner, repo_name)
+        );
+        CREATE TABLE IF NOT EXISTS apollo_contact_cache (
+            apollo_id   TEXT PRIMARY KEY,
+            data        TEXT NOT NULL,
+            cached_at   INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS suppress_list (
+            id          TEXT PRIMARY KEY,
+            entry       TEXT NOT NULL,
+            entry_type  TEXT NOT NULL,
+            created_at  INTEGER NOT NULL
         );",
     )
 }

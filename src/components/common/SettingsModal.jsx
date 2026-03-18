@@ -11,6 +11,11 @@ export function SettingsModal({ T, onClose }) {
   const [senderName,    setSenderName]    = useState(settings.senderName    || "");
   const [ghPatExists,   setGhPatExists]   = useState(false);
   const [saved,         setSaved]         = useState(false);
+  const [bookingUrl,    setBookingUrl]    = useState(settings.bookingUrl || "");
+  const [weeklyGoal,    setWeeklyGoal]    = useState(settings.weeklyGoal ?? 250);
+  const [suppressList,  setSuppressList]  = useState([]);
+  const [suppressInput, setSuppressInput] = useState("");
+  const [suppressType,  setSuppressType]  = useState("email");
 
   useEffect(() => {
     // Pre-load from keychain on open
@@ -23,6 +28,7 @@ export function SettingsModal({ T, onClose }) {
     invoke("get_credential", { key: "github_pat" })
       .then(v => { if (v) setGhPatExists(true); })
       .catch(() => {});
+    invoke("get_suppress_list").then(list => setSuppressList(list || [])).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSave = async () => {
@@ -41,6 +47,7 @@ export function SettingsModal({ T, onClose }) {
     if (senderName.trim()) {
       updateSettings({ senderName: senderName.trim() });
     }
+    updateSettings({ bookingUrl: bookingUrl.trim(), weeklyGoal: weeklyGoal || 250 });
 
     setSaved(true);
     setTimeout(onClose, 700);
@@ -62,6 +69,23 @@ export function SettingsModal({ T, onClose }) {
   const Section = ({ children, top }) => (
     <div style={{ marginTop: top ?? 18 }}>{children}</div>
   );
+
+  const handleAddSuppress = async () => {
+    const entry = suppressInput.trim();
+    if (!entry) return;
+    try {
+      const id = await invoke("add_to_suppress_list", { entry, entryType: suppressType });
+      setSuppressList(prev => [{ id, entry, entry_type: suppressType, created_at: new Date().toISOString() }, ...prev]);
+      setSuppressInput("");
+    } catch (e) { console.error("add suppress:", e); }
+  };
+
+  const handleRemoveSuppress = async (id) => {
+    try {
+      await invoke("remove_from_suppress_list", { id });
+      setSuppressList(prev => prev.filter(i => i.id !== id));
+    } catch (e) { console.error("remove suppress:", e); }
+  };
 
   return (
     <div
@@ -169,6 +193,85 @@ export function SettingsModal({ T, onClose }) {
             placeholder="Josh Tseppich"
             style={{ ...inputStyle, fontFamily: "inherit" }}
           />
+        </Section>
+
+        {/* Booking URL */}
+        <Section>
+          <label style={{ ...labelStyle, fontFamily: "inherit" }}>Booking URL <span style={{ fontWeight: 400, color: T.textMuted }}>(e.g. Calendly link for email CTAs)</span></label>
+          <input
+            type="text"
+            value={bookingUrl}
+            onChange={e => setBookingUrl(e.target.value)}
+            placeholder="https://calendly.com/yourname/30min"
+            style={{ ...inputStyle, fontFamily: "inherit" }}
+          />
+        </Section>
+
+        {/* Weekly goal */}
+        <Section>
+          <label style={{ ...labelStyle, fontFamily: "inherit" }}>Weekly Outreach Goal <span style={{ fontWeight: 400, color: T.textMuted }}>(contacts/week)</span></label>
+          <input
+            type="number"
+            min="1"
+            max="9999"
+            value={weeklyGoal}
+            onChange={e => setWeeklyGoal(parseInt(e.target.value, 10) || 0)}
+            style={{ ...inputStyle, fontFamily: "inherit", width: 120 }}
+          />
+        </Section>
+
+        {/* Suppress list */}
+        <Section>
+          <label style={labelStyle}>Suppress List ({suppressList.length})</label>
+          <p style={{ fontSize: 11, color: T.textMuted, margin: "0 0 10px" }}>
+            Contacts, emails, or domains here are never shown in Intel results.
+          </p>
+          <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+            <input
+              type="text"
+              value={suppressInput}
+              onChange={e => setSuppressInput(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") handleAddSuppress(); }}
+              placeholder="email@example.com or example.com"
+              style={{ ...inputStyle, flex: 1, fontSize: 12 }}
+            />
+            <select
+              value={suppressType}
+              onChange={e => setSuppressType(e.target.value)}
+              style={{ ...inputStyle, width: 90, fontFamily: "inherit" }}
+            >
+              <option value="email">Email</option>
+              <option value="domain">Domain</option>
+              <option value="company">Company</option>
+            </select>
+            <button
+              onClick={handleAddSuppress}
+              disabled={!suppressInput.trim()}
+              style={{ padding: "8px 14px", borderRadius: 7, border: "none", background: T.accent, color: "#fff", fontSize: 12, fontWeight: 600, cursor: suppressInput.trim() ? "pointer" : "not-allowed", opacity: suppressInput.trim() ? 1 : 0.5, whiteSpace: "nowrap" }}
+            >
+              + Add
+            </button>
+          </div>
+          {suppressList.length > 0 && (
+            <div style={{ maxHeight: 160, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+              {suppressList.map(item => (
+                <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", background: T.bg, border: `1px solid ${T.border}`, borderRadius: 6 }}>
+                  <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: T.surface, color: T.textMuted, fontWeight: 600, textTransform: "uppercase", flexShrink: 0 }}>
+                    {item.entry_type}
+                  </span>
+                  <span style={{ flex: 1, fontSize: 12, color: T.textSub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {item.entry}
+                  </span>
+                  <button
+                    onClick={() => handleRemoveSuppress(item.id)}
+                    style={{ background: "none", border: "none", color: T.textMuted, cursor: "pointer", fontSize: 14, padding: "0 2px", flexShrink: 0 }}
+                    onMouseEnter={e => e.currentTarget.style.color = T.red}
+                    onMouseLeave={e => e.currentTarget.style.color = T.textMuted}
+                  >×</button>
+                </div>
+              ))}
+            </div>
+          )}
         </Section>
 
         {/* Saved Hooks */}

@@ -450,6 +450,24 @@ export function EmailView({ T }) {
                 >
                   {copiedField === "all" ? "Copied ✓" : "Copy all"}
                 </button>
+                <button
+                  onClick={() => {
+                    const url = settings.bookingUrl;
+                    if (!url) { setError("Set a Booking URL in Settings first"); return; }
+                    const insert = `\n\nBook a call: ${url}`;
+                    setEditedBody(prev => prev + insert);
+                  }}
+                  title="Insert booking link"
+                  style={{
+                    padding: "7px 12px",
+                    background: "transparent",
+                    border: `1px solid ${T.border}`,
+                    borderRadius: 7, fontSize: 12,
+                    color: T.textSub, cursor: "pointer",
+                  }}
+                >
+                  📅 Book link
+                </button>
                 {activeLead?.email && (
                   <button
                     onClick={openMailto}

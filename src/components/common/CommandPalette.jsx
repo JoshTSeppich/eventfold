@@ -11,6 +11,7 @@ const ACTIONS = [
   { id: "goto-analytics", icon: "◷", label: "Go to Analytics",  tab: "analytics", hint: "A" },
   { id: "goto-today",     icon: "✦", label: "Go to Today",      tab: "today",     hint: "T" },
   { id: "goto-features",  icon: "◇", label: "Go to Features",   tab: "features",  hint: null },
+  { id: "goto-activity",  icon: "◳", label: "Go to Activity",   tab: "activity",  hint: null },
   { id: "open-settings",  icon: "⚙", label: "Open Settings",    tab: null,        hint: "," },
 ];
 
