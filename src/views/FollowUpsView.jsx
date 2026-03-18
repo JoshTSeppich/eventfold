@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { useApp } from "../context/AppContext.jsx";
 import { relativeTime } from "../utils/relativeTime.js";
 import { STALE_THRESHOLD_MS } from "../constants/outreach.js";
@@ -29,11 +30,11 @@ export function FollowUpsView({ T, onSwitchToLeads }) {
 
   const staleCount = followUps.filter(l => l.isStale).length;
 
-  const generateMailto = (lead) => {
+  const openFollowUpMailto = (lead) => {
     const email   = lead.email || "";
     const subject = encodeURIComponent(`Following up`);
     const body    = encodeURIComponent(`Hi ${lead.name?.split(" ")[0] || "there"},\n\nJust circling back on my previous email…\n\n`);
-    return `mailto:${email}?subject=${subject}&body=${body}`;
+    invoke("open_url", { url: `mailto:${email}?subject=${subject}&body=${body}` });
   };
 
   if (followUps.length === 0) {
@@ -125,21 +126,23 @@ export function FollowUpsView({ T, onSwitchToLeads }) {
                   <td style={{ padding: "12px 16px" }}>
                     <div style={{ display: "flex", gap: 6 }}>
                       {lead.email && (
-                        <a
-                          href={generateMailto(lead)}
-                          onClick={() => updateLead(lead.id, l => ({
-                            ...l,
-                            followUpCount: (l.followUpCount || 0) + 1,
-                            lastFollowUpAt: new Date().toISOString(),
-                          }))}
+                        <button
+                          onClick={() => {
+                            openFollowUpMailto(lead);
+                            updateLead(lead.id, l => ({
+                              ...l,
+                              followUpCount: (l.followUpCount || 0) + 1,
+                              lastFollowUpAt: new Date().toISOString(),
+                            }));
+                          }}
                           style={{
                             padding: "5px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600,
                             background: T.accentDim, color: T.accent,
-                            textDecoration: "none", display: "inline-block",
+                            border: "none", cursor: "pointer", display: "inline-block",
                           }}
                         >
                           Follow up ↗
-                        </a>
+                        </button>
                       )}
                       <button
                         onClick={() => updateLead(lead.id, l => ({ ...l, outreachStatus: "responded" }))}

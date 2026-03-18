@@ -9,6 +9,7 @@ const RUNS_KEY     = "ef_saved_runs";
 const DARK_KEY     = "ef_dark";
 const SETTINGS_KEY = "ef_settings";
 const DRAFTS_KEY   = "ef_email_drafts";
+const HOOKS_KEY    = "ef_saved_hooks_v1";
 const MAX_RUNS     = 15;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -47,6 +48,12 @@ function loadDrafts() {
   catch { return {}; }
 }
 
+// savedHooks: [{ id, hook, angle, starredAt, appliedCount }]
+function loadSavedHooks() {
+  try { return JSON.parse(localStorage.getItem(HOOKS_KEY) || "[]"); }
+  catch { return []; }
+}
+
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 const AppContext = createContext(null);
@@ -57,11 +64,12 @@ export function AppProvider({ children }) {
     return s !== null ? s === "true" : true;
   });
 
-  const [leads,     setLeads]     = useState(loadLeads);
-  const [runs,      setRuns]      = useState(loadRuns);
-  const [templates, setTemplates] = useState(loadTemplates);
-  const [settings,  setSettings]  = useState(loadSettings);
-  const [drafts,    setDrafts]    = useState(loadDrafts);
+  const [leads,      setLeads]      = useState(loadLeads);
+  const [runs,       setRuns]       = useState(loadRuns);
+  const [templates,  setTemplates]  = useState(loadTemplates);
+  const [settings,   setSettings]   = useState(loadSettings);
+  const [drafts,     setDrafts]     = useState(loadDrafts);
+  const [savedHooks, setSavedHooks] = useState(loadSavedHooks);
 
   // Persist
   useEffect(() => { localStorage.setItem(LEADS_KEY, JSON.stringify(leads)); },     [leads]);
@@ -70,6 +78,7 @@ export function AppProvider({ children }) {
   useEffect(() => { saveTemplates(templates);                                },     [templates]);
   useEffect(() => { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }, [settings]);
   useEffect(() => { localStorage.setItem(DRAFTS_KEY,   JSON.stringify(drafts));   }, [drafts]);
+  useEffect(() => { localStorage.setItem(HOOKS_KEY,    JSON.stringify(savedHooks)); }, [savedHooks]);
 
   // ── Lead actions ────────────────────────────────────────────────────────────
 
@@ -119,7 +128,7 @@ export function AppProvider({ children }) {
 
   const saveRun = useCallback((run) => {
     setRuns((prev) => {
-      const next = [{ ...run, id: Date.now(), savedAt: new Date().toISOString() }, ...prev];
+      const next = [{ ...run, id: crypto.randomUUID(), savedAt: new Date().toISOString() }, ...prev];
       return next.slice(0, MAX_RUNS);
     });
   }, []);
@@ -144,6 +153,23 @@ export function AppProvider({ children }) {
     setDrafts((prev) => { const n = { ...prev }; delete n[leadId]; return n; });
   }, []);
 
+  // ── Saved hooks ───────────────────────────────────────────────────────────────
+
+  const starHook = useCallback((hookObj) => {
+    setSavedHooks((prev) => {
+      if (prev.some((h) => h.hook === hookObj.hook)) return prev;
+      return [{ id: crypto.randomUUID(), hook: hookObj.hook, angle: hookObj.angle || "", starredAt: new Date().toISOString(), appliedCount: 0 }, ...prev];
+    });
+  }, []);
+
+  const unstarHook = useCallback((hookId) => {
+    setSavedHooks((prev) => prev.filter((h) => h.id !== hookId));
+  }, []);
+
+  const incrementHookApplied = useCallback((hookId) => {
+    setSavedHooks((prev) => prev.map((h) => h.id === hookId ? { ...h, appliedCount: (h.appliedCount || 0) + 1 } : h));
+  }, []);
+
   return (
     <AppContext.Provider value={{
       isDark, setIsDark,
@@ -152,6 +178,7 @@ export function AppProvider({ children }) {
       templates, setTemplates,
       settings, updateSettings,
       drafts, saveDraft, clearDraft,
+      savedHooks, starHook, unstarHook, incrementHookApplied,
     }}>
       {children}
     </AppContext.Provider>

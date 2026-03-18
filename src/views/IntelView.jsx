@@ -319,7 +319,7 @@ function ContactCard({ contact, checks, isDark, T, selected, onToggle }) {
 // ─── IntelView ────────────────────────────────────────────────────────────────
 
 export function IntelView({ T, onSendToLeads }) {
-  const { isDark, settings, saveRun, addLeads } = useApp();
+  const { isDark, settings, saveRun, addLeads, savedHooks, starHook, unstarHook } = useApp();
   const [markdown, setMarkdown]     = useState("");
   const [stageStatus, setStageStatus] = useState({});
   const [contacts, setContacts]     = useState([]);
@@ -332,6 +332,8 @@ export function IntelView({ T, onSendToLeads }) {
   const [done, setDone]             = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [filter, setFilter]         = useState("all");
+  const [topHooks, setTopHooks]     = useState([]);
+  const [hooksExpanded, setHooksExpanded] = useState(false);
   const abortRef = useRef(false);
 
   const anthropicKey = settings.anthropicKey || "";
@@ -364,6 +366,8 @@ export function IntelView({ T, onSendToLeads }) {
     setPipelineLog([]); setQueryLog([]);
     setError(null); setDone(false);
     setSelectedIds(new Set());
+    setTopHooks([]);
+    setHooksExpanded(false);
   }
 
   async function run() {
@@ -403,6 +407,7 @@ export function IntelView({ T, onSendToLeads }) {
         'Extract 3 sales hooks. Return ONLY valid JSON: { "topHooks": [{ "angle": "name", "hook": "one sentence pitch" }] }',
         hooksSection, 512);
       const { topHooks = [] } = parseJson(q3raw);
+      setTopHooks(topHooks);
       setSt("haiku3", "done"); addLog("haiku3", "Sales Hooks", { count: topHooks.length });
       if (abortRef.current) { setRunning(false); return; }
 
@@ -584,6 +589,63 @@ Return ONLY valid JSON: { "queryIndices": [0,1,2], "personTitles": [...], "senio
                 </span>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Hooks section — shown after pipeline completes */}
+        {done && topHooks.length > 0 && (
+          <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 12 }}>
+            <button
+              onClick={() => setHooksExpanded((p) => !p)}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                width: "100%", background: "none", border: "none", cursor: "pointer",
+                padding: 0, marginBottom: hooksExpanded ? 10 : 0,
+              }}
+            >
+              <span style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                Hooks ({topHooks.length})
+              </span>
+              <span style={{ fontSize: 10, color: T.textMuted }}>{hooksExpanded ? "▲" : "▼"}</span>
+            </button>
+            {hooksExpanded && topHooks.map((h, i) => {
+              const existing = savedHooks.find((s) => s.hook === h.hook);
+              const isStarred = !!existing;
+              return (
+                <div
+                  key={i}
+                  style={{
+                    background: T.card,
+                    border: `1px solid ${T.border}`,
+                    borderRadius: 8,
+                    padding: "9px 10px",
+                    marginBottom: 6,
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>
+                      {h.angle}
+                    </div>
+                    <div style={{ fontSize: 12, color: T.textSub, lineHeight: 1.5 }}>{h.hook}</div>
+                  </div>
+                  <button
+                    onClick={() => isStarred ? unstarHook(existing.id) : starHook({ hook: h.hook, angle: h.angle })}
+                    title={isStarred ? "Unstar hook" : "Star hook"}
+                    style={{
+                      background: "none", border: "none", cursor: "pointer",
+                      fontSize: 16, color: isStarred ? T.amber : T.textMuted,
+                      flexShrink: 0, padding: "0 2px",
+                      lineHeight: 1,
+                    }}
+                  >
+                    {isStarred ? "★" : "☆"}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

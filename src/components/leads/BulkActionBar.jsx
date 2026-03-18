@@ -1,4 +1,4 @@
-export function BulkActionBar({ count, onMark, onClear, onExport, isDark }) {
+export function BulkActionBar({ count, onMark, onClear, onExport, onApplyHook, isDark }) {
   const bg     = isDark ? "#1e3a5f" : "#eff6ff";
   const border = isDark ? "#2563eb" : "#bfdbfe";
   const txt    = isDark ? "#93c5fd" : "#1d4ed8";
@@ -38,6 +38,7 @@ export function BulkActionBar({ count, onMark, onClear, onExport, isDark }) {
       <Btn label="↩ Mark replied"    onClick={() => onMark("responded")} />
       <Btn label="✓ Mark booked"     onClick={() => onMark("qualified")} />
       <Btn label="✗ Mark dead"       onClick={() => onMark("dead")} red />
+      {onApplyHook && <Btn label="☆ Apply Hook" onClick={onApplyHook} />}
 
       <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
         <Btn label="Export CSV" onClick={onExport} />

@@ -7,6 +7,7 @@ import { CopyToast }       from "../components/leads/CopyToast.jsx";
 import { BulkActionBar }   from "../components/leads/BulkActionBar.jsx";
 import { AddLeadModal }    from "../components/leads/AddLeadModal.jsx";
 import { UndoToast }       from "../components/leads/UndoToast.jsx";
+import { HookPickerModal } from "../components/leads/HookPickerModal.jsx";
 import { useLeadsFilter, useLeadsSummary } from "../hooks/useLeadsFilter.js";
 import { updateOutreachStatus }            from "../utils/updateOutreachStatus.js";
 import { useSelection }    from "../hooks/useSelection.js";
@@ -22,6 +23,7 @@ export function LeadsView({ T, onRequestSwitchTab }) {
   const [focusedId, setFocusedId]   = useState(null);
   const [showDetail, setShowDetail] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showHookPicker, setShowHookPicker] = useState(false);
   const [toast, setToast]           = useState(null);
 
   const { selected, toggle, selectAll, clear } = useSelection();
@@ -121,12 +123,12 @@ export function LeadsView({ T, onRequestSwitchTab }) {
               color: T.text, fontSize: 12, width: 200, outline: "none",
             }}
           />
-          <span style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", color: T.muted, fontSize: 12, pointerEvents: "none" }}>⌕</span>
+          <span style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", color: T.textMuted, fontSize: 12, pointerEvents: "none" }}>⌕</span>
         </div>
 
         <button onClick={() => setShowAddModal(true)} style={{ background: T.accent, border: "none", borderRadius: 7, padding: "5px 11px", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>+ Lead</button>
-        <button onClick={() => exportLeadsCSV(filteredLeads)} style={{ background: "transparent", border: `1px solid ${T.border}`, borderRadius: 7, padding: "5px 9px", color: T.sub, fontSize: 11, cursor: "pointer" }} title="Export to CSV">↓ CSV</button>
-        <button onClick={() => setShowDead((p) => !p)} style={{ background: showDead ? (isDark ? "#1e293b" : "#f1f5f9") : "transparent", border: `1px solid ${T.border}`, borderRadius: 7, padding: "5px 9px", color: T.sub, fontSize: 11, cursor: "pointer" }}>
+        <button onClick={() => exportLeadsCSV(filteredLeads)} style={{ background: "transparent", border: `1px solid ${T.border}`, borderRadius: 7, padding: "5px 9px", color: T.textSub, fontSize: 11, cursor: "pointer" }} title="Export to CSV">↓ CSV</button>
+        <button onClick={() => setShowDead((p) => !p)} style={{ background: showDead ? (isDark ? "#1e293b" : "#f1f5f9") : "transparent", border: `1px solid ${T.border}`, borderRadius: 7, padding: "5px 9px", color: T.textSub, fontSize: 11, cursor: "pointer" }}>
           {showDead ? "Hide dead" : "Dead"}
         </button>
         <span style={{ marginLeft: "auto", fontSize: 11, color: T.muted }}>
@@ -144,6 +146,7 @@ export function LeadsView({ T, onRequestSwitchTab }) {
           onMark={handleBulkMark}
           onClear={clear}
           onExport={() => { exportLeadsCSV(leads.filter((l) => selected.has(l.id))); clear(); }}
+          onApplyHook={() => setShowHookPicker(true)}
           isDark={isDark}
         />
       )}
@@ -174,6 +177,25 @@ export function LeadsView({ T, onRequestSwitchTab }) {
 
       {/* Overlays */}
       {showAddModal && <AddLeadModal isDark={isDark} onAdd={handleAddLead} onClose={() => setShowAddModal(false)} />}
+      {showHookPicker && (
+        <HookPickerModal
+          selectedLeadIds={selected}
+          leads={leads}
+          isDark={isDark}
+          T={isDark ? {
+            text: "#dde8f5", textSub: "#7a8fa6", textMuted: "#3d5266",
+            accent: "#2d7ef7", accentDim: "#1a4a94", border: "#1a2e45", borderLight: "#1e3a54",
+            surface: "#0d1521", card: "#111d2e", bg: "#080c14",
+            green: "#22c55e", amber: "#f59e0b",
+          } : {
+            text: "#0f172a", textSub: "#475569", textMuted: "#94a3b8",
+            accent: "#4f46e5", accentDim: "#e0e7ff", border: "#e2e8f0", borderLight: "#cbd5e1",
+            surface: "#ffffff", card: "#ffffff", bg: "#f1f5f9",
+            green: "#16a34a", amber: "#d97706",
+          }}
+          onClose={() => { setShowHookPicker(false); clear(); }}
+        />
+      )}
       <CopyToast toast={toast} onConfirm={() => { if (toast) { handleStatusUpdate(toast.leadId, "contacted"); setToast(null); } }} onDismiss={() => setToast(null)} isDark={isDark} />
       <UndoToast undoItem={undoItem} onUndo={undo} onDismiss={dismissUndo} isDark={isDark} UNDO_WINDOW_MS={UNDO_WINDOW_MS} />
     </div>

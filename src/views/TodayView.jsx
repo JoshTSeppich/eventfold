@@ -442,7 +442,7 @@ export function TodayView({ T, onSwitchTab }) {
 
   const readyCount     = leads.filter((l) => l.outreachStatus === "new" && l.email).length;
   const staleCount     = leads.filter(
-    (l) => l.outreachStatus === "contacted" && l.contactedAt && Date.now() - l.contactedAt > STALE_THRESHOLD_MS
+    (l) => l.outreachStatus === "contacted" && l.contactedAt && Date.now() - new Date(l.contactedAt).getTime() > STALE_THRESHOLD_MS
   ).length;
   const respondedCount = leads.filter((l) => l.outreachStatus === "responded").length;
   const totalPending   = Math.min(readyCount, 10) + staleCount + respondedCount;

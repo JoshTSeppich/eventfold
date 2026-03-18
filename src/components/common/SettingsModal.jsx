@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useApp } from "../../context/AppContext.jsx";
 
 export function SettingsModal({ T, onClose }) {
-  const { settings, updateSettings } = useApp();
+  const { settings, updateSettings, savedHooks, unstarHook } = useApp();
 
   const [anthropicKey,  setAnthropicKey]  = useState(settings.anthropicKey  || "");
   const [apolloKey,     setApolloKey]     = useState(settings.apolloKey     || "");
@@ -170,6 +170,45 @@ export function SettingsModal({ T, onClose }) {
             style={{ ...inputStyle, fontFamily: "inherit" }}
           />
         </Section>
+
+        {/* Saved Hooks */}
+        {savedHooks.length > 0 && (
+          <Section>
+            <label style={labelStyle}>Saved Hooks ({savedHooks.length})</label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto" }}>
+              {savedHooks.map((hook) => (
+                <div
+                  key={hook.id}
+                  style={{
+                    display: "flex", alignItems: "flex-start", gap: 8,
+                    padding: "8px 10px",
+                    background: T.bg, border: `1px solid ${T.border}`,
+                    borderRadius: 8,
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {hook.angle && (
+                      <div style={{ fontSize: 10, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>
+                        {hook.angle}
+                      </div>
+                    )}
+                    <div style={{ fontSize: 12, color: T.textSub, lineHeight: 1.5 }}>{hook.hook}</div>
+                    {hook.appliedCount > 0 && (
+                      <div style={{ fontSize: 10, color: T.textMuted, marginTop: 2 }}>Used {hook.appliedCount}×</div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => unstarHook(hook.id)}
+                    title="Remove hook"
+                    style={{ background: "none", border: "none", color: T.textMuted, cursor: "pointer", fontSize: 14, padding: "0 2px", flexShrink: 0 }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = T.red; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = T.textMuted; }}
+                  >×</button>
+                </div>
+              ))}
+            </div>
+          </Section>
+        )}
 
         {/* Actions */}
         <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { OutreachStatusPill }    from "./OutreachStatusPill.jsx";
 import { EmailStatusPill }       from "./EmailStatusPill.jsx";
 import { StatusPickerPopover }   from "./StatusPickerPopover.jsx";
@@ -71,13 +72,7 @@ export function LeadDetailPanel({ lead, isDark, onStatusUpdate, onClose }) {
     const t = tpl || selectedTemplate || templates[0];
     const url = generateMailtoUrl(lead, t);
     if (!url) return;
-    // Use Tauri if available, fallback to window.open
-    try {
-      const { invoke } = window.__TAURI__?.core || {};
-      invoke ? invoke("open_url", { url }) : window.open(url);
-    } catch {
-      window.open(url);
-    }
+    invoke("open_url", { url });
     // Auto-prompt to mark as contacted if still new
     if (lead.outreachStatus === "new") {
       onStatusUpdate(lead.id, "contacted");
@@ -321,10 +316,7 @@ export function LeadDetailPanel({ lead, isDark, onStatusUpdate, onClose }) {
           <div>
             <label style={labelStyle}>LinkedIn</label>
             <button
-              onClick={() => {
-                try { window.__TAURI__?.core?.invoke("open_url", { url: lead.linkedinUrl }); }
-                catch { window.open(lead.linkedinUrl); }
-              }}
+              onClick={() => invoke("open_url", { url: lead.linkedinUrl })}
               style={{
                 background: "transparent", border: `1px solid ${border}`,
                 borderRadius: 7, padding: "6px 12px",
