@@ -66,7 +66,7 @@ pub async fn create_github_issues(
         if status == 201 {
             results.push(IssueResult {
                 title: issue.title.clone(),
-                status: "success".into(),
+                status: "created".into(),
                 url: json["html_url"].as_str().map(String::from),
                 error: None,
             });

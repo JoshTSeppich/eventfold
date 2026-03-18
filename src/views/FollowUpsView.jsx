@@ -11,26 +11,21 @@ const STATUS_COLORS = {
 
 export function FollowUpsView({ T, onSwitchToLeads }) {
   const { leads, updateLead } = useApp();
-  const now = Date.now();
-
   // Leads that need attention: contacted > 5d ago, responded, or qualified (not dead/new)
   const followUps = useMemo(() => {
     return leads
-      .filter(l => {
-        if (l.outreachStatus === "new" || l.outreachStatus === "dead") return false;
-        return true;
-      })
+      .filter(l => l.outreachStatus !== "new" && l.outreachStatus !== "dead")
       .map(l => {
+        const now = Date.now();  // computed per-evaluation, not stale
         const age = l.contactedAt ? now - new Date(l.contactedAt).getTime() : 0;
         const isStale = l.outreachStatus === "contacted" && age > STALE_THRESHOLD_MS;
         return { ...l, age, isStale };
       })
       .sort((a, b) => {
-        // Stale first, then by age desc
         if (a.isStale !== b.isStale) return a.isStale ? -1 : 1;
         return b.age - a.age;
       });
-  }, [leads, now]);
+  }, [leads]);
 
   const staleCount = followUps.filter(l => l.isStale).length;
 
@@ -132,7 +127,11 @@ export function FollowUpsView({ T, onSwitchToLeads }) {
                       {lead.email && (
                         <a
                           href={generateMailto(lead)}
-                          onClick={() => updateLead(lead.id, l => ({ ...l, followUpCount: (l.followUpCount || 0) + 1, outreachStatus: "contacted", contactedAt: l.contactedAt || new Date().toISOString() }))}
+                          onClick={() => updateLead(lead.id, l => ({
+                            ...l,
+                            followUpCount: (l.followUpCount || 0) + 1,
+                            lastFollowUpAt: new Date().toISOString(),
+                          }))}
                           style={{
                             padding: "5px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600,
                             background: T.accentDim, color: T.accent,

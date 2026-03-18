@@ -319,7 +319,7 @@ function ContactCard({ contact, checks, isDark, T, selected, onToggle }) {
 // ─── IntelView ────────────────────────────────────────────────────────────────
 
 export function IntelView({ T, onSendToLeads }) {
-  const { isDark, settings, saveRun } = useApp();
+  const { isDark, settings, saveRun, addLeads } = useApp();
   const [markdown, setMarkdown]     = useState("");
   const [stageStatus, setStageStatus] = useState({});
   const [contacts, setContacts]     = useState([]);
@@ -335,7 +335,7 @@ export function IntelView({ T, onSendToLeads }) {
   const abortRef = useRef(false);
 
   const anthropicKey = settings.anthropicKey || localStorage.getItem("ff_anthropic_key") || "";
-  const apolloKey    = settings.apolloKey    || "TlHGetzVDxtVJTl_OZNGCQ";
+  const apolloKey    = settings.apolloKey    || "";
 
   const setSt = (id, status, detail) => {
     setStageStatus((p) => ({ ...p, [id]: status }));
@@ -370,6 +370,8 @@ export function IntelView({ T, onSendToLeads }) {
     if (!markdown.trim()) return;
     abortRef.current = false;
     setRunning(true);
+    if (!apolloKey) { setError("Apollo API key not set — add it in Settings"); setRunning(false); return; }
+    const runId = `run-${Date.now()}`;
     resetPipeline();
     STAGES.forEach((s) => setSt(s.id, "pending"));
 
@@ -382,6 +384,7 @@ export function IntelView({ T, onSendToLeads }) {
         queriesSection, 1024);
       const apolloQueries = parseJson(q1raw);
       setSt("haiku1", "done"); addLog("haiku1", "Extract Queries", { count: apolloQueries.length });
+      if (abortRef.current) { setRunning(false); return; }
 
       // ── Stage 2: Extract ICP targets ──────────────────────────────────────
       setSt("haiku2", "active");
@@ -391,6 +394,7 @@ export function IntelView({ T, onSendToLeads }) {
         icpSection, 512);
       const { personTitles = ["CTO","Founder","VP Engineering"], seniorityLevels = ["c_suite","vp","director","founder"] } = parseJson(q2raw);
       setSt("haiku2", "done"); addLog("haiku2", "ICP Targets", { personTitles, seniorityLevels });
+      if (abortRef.current) { setRunning(false); return; }
 
       // ── Stage 3: Extract hooks ────────────────────────────────────────────
       setSt("haiku3", "active");
@@ -400,6 +404,7 @@ export function IntelView({ T, onSendToLeads }) {
         hooksSection, 512);
       const { topHooks = [] } = parseJson(q3raw);
       setSt("haiku3", "done"); addLog("haiku3", "Sales Hooks", { count: topHooks.length });
+      if (abortRef.current) { setRunning(false); return; }
 
       // ── Stage 4: Extract qual checklist ───────────────────────────────────
       setSt("haiku4", "active");
@@ -413,6 +418,7 @@ export function IntelView({ T, onSendToLeads }) {
       } catch (_) {}
       setChecklist(extractedChecklist);
       setSt("haiku4", "done"); addLog("haiku4", "Qual Criteria", { count: extractedChecklist.length });
+      if (abortRef.current) { setRunning(false); return; }
 
       // ── Stage 5: Synthesize strategy ──────────────────────────────────────
       setSt("sonnet", "active");
@@ -431,6 +437,7 @@ Return ONLY valid JSON: { "queryIndices": [0,1,2], "personTitles": [...], "senio
       const primaryHook    = strategy.primaryHook || topHooks[0]?.hook || "";
       setTargetTitles(finalTitles);
       setSt("sonnet", "done"); addLog("sonnet", "Strategy", strategy);
+      if (abortRef.current) { setRunning(false); return; }
 
       // ── Stage 6: Apollo search ────────────────────────────────────────────
       setSt("apollo", "active");
@@ -448,7 +455,7 @@ Return ONLY valid JSON: { "queryIndices": [0,1,2], "personTitles": [...], "senio
       // Add qual scores
       const scored = allContacts.map((c) => {
         const checks = runQualChecks(c, extractedChecklist, finalTitles);
-        return { ...c, fitScore: fitScore(checks), qualChecks: checks };
+        return { ...c, fitScore: fitScore(checks), qualChecks: checks, runId };
       });
 
       setContacts(scored);
@@ -475,7 +482,9 @@ Return ONLY valid JSON: { "queryIndices": [0,1,2], "personTitles": [...], "senio
 
   function sendToLeads() {
     const toSend = contacts.filter((c) => selectedIds.has(c.id));
-    onSendToLeads(toSend.length ? toSend : contacts);
+    const payload = (toSend.length ? toSend : contacts).map(c => ({ ...c, source: "intel" }));
+    addLeads(payload);
+    onSendToLeads(payload);
   }
 
   const T_local = { ...T, green: isDark ? "#86efac" : "#15803d", red: isDark ? "#f87171" : "#dc2626" };
@@ -527,6 +536,21 @@ Return ONLY valid JSON: { "queryIndices": [0,1,2], "personTitles": [...], "senio
         >
           {running ? "Running pipeline…" : "Run Intel Pipeline →"}
         </button>
+        {running && (
+          <button
+            onClick={() => { abortRef.current = true; }}
+            style={{
+              width: "100%", padding: "8px 0",
+              background: "transparent",
+              border: `1px solid ${T_local.red}`,
+              borderRadius: 8,
+              color: T_local.red, fontSize: 12, fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            ✕ Abort
+          </button>
+        )}
 
         {!anthropicKey && (
           <div style={{ background: isDark ? "#1f0a0a" : "#fff5f5", border: `1px solid ${isDark ? "#7f1d1d" : "#fecaca"}`, borderRadius: 7, padding: "8px 10px", fontSize: 11, color: isDark ? "#f87171" : "#dc2626" }}>

@@ -8,6 +8,7 @@ const LEADS_KEY    = "ef_leads_v1";
 const RUNS_KEY     = "ef_saved_runs";
 const DARK_KEY     = "ef_dark";
 const SETTINGS_KEY = "ef_settings";
+const DRAFTS_KEY   = "ef_email_drafts";
 const MAX_RUNS     = 15;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -40,6 +41,12 @@ function loadSettings() {
   catch { return {}; }
 }
 
+// drafts: { [leadId]: { subject, body, tone, goal, updatedAt } }
+function loadDrafts() {
+  try { return JSON.parse(localStorage.getItem(DRAFTS_KEY) || "{}"); }
+  catch { return {}; }
+}
+
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 const AppContext = createContext(null);
@@ -54,6 +61,7 @@ export function AppProvider({ children }) {
   const [runs,      setRuns]      = useState(loadRuns);
   const [templates, setTemplates] = useState(loadTemplates);
   const [settings,  setSettings]  = useState(loadSettings);
+  const [drafts,    setDrafts]    = useState(loadDrafts);
 
   // Persist
   useEffect(() => { localStorage.setItem(LEADS_KEY, JSON.stringify(leads)); },     [leads]);
@@ -61,6 +69,7 @@ export function AppProvider({ children }) {
   useEffect(() => { localStorage.setItem(DARK_KEY,  isDark);                },     [isDark]);
   useEffect(() => { saveTemplates(templates);                                },     [templates]);
   useEffect(() => { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }, [settings]);
+  useEffect(() => { localStorage.setItem(DRAFTS_KEY,   JSON.stringify(drafts));   }, [drafts]);
 
   // ── Lead actions ────────────────────────────────────────────────────────────
 
@@ -86,6 +95,13 @@ export function AppProvider({ children }) {
           notes:          [],
           createdAt:      l.createdAt || new Date().toISOString(),
           source:         l.source || "manual",
+          companySize:    l.companySize   || null,
+          companyDomain:  l.companyDomain || null,
+          industry:       l.industry      || null,
+          location:       l.location      || null,
+          photoUrl:       l.photoUrl      || null,
+          qualChecks:     l.qualChecks    || [],
+          runId:          l.runId         || null,
         }));
       return [...fresh, ...prev];
     });
@@ -93,6 +109,10 @@ export function AppProvider({ children }) {
 
   const updateLead = useCallback((leadId, updater) => {
     setLeads((prev) => prev.map((l) => l.id === leadId ? updater(l) : l));
+  }, []);
+
+  const deleteLead = useCallback((leadId) => {
+    setLeads((prev) => prev.filter((l) => l.id !== leadId));
   }, []);
 
   // ── Runs (Intel saved results) ───────────────────────────────────────────────
@@ -114,13 +134,24 @@ export function AppProvider({ children }) {
     setSettings((prev) => ({ ...prev, ...patch }));
   }, []);
 
+  // ── Email drafts ──────────────────────────────────────────────────────────────
+  // Keyed by leadId. Persists subject/body/tone/goal per lead across tab switches.
+  const saveDraft = useCallback((leadId, draft) => {
+    setDrafts((prev) => ({ ...prev, [leadId]: { ...draft, updatedAt: new Date().toISOString() } }));
+  }, []);
+
+  const clearDraft = useCallback((leadId) => {
+    setDrafts((prev) => { const n = { ...prev }; delete n[leadId]; return n; });
+  }, []);
+
   return (
     <AppContext.Provider value={{
       isDark, setIsDark,
-      leads, setLeads, addLeads, updateLead,
+      leads, setLeads, addLeads, updateLead, deleteLead,
       runs, saveRun, deleteRun,
       templates, setTemplates,
       settings, updateSettings,
+      drafts, saveDraft, clearDraft,
     }}>
       {children}
     </AppContext.Provider>

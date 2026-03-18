@@ -5,7 +5,7 @@ import { StatusPickerPopover }   from "./StatusPickerPopover.jsx";
 import { TemplatePickerPopover } from "./TemplatePickerPopover.jsx";
 import { generateMailtoUrl }     from "../../utils/generateMailto.js";
 import { fullDate, relativeTime } from "../../utils/relativeTime.js";
-import { loadTemplates }         from "../../data/defaultTemplates.js";
+import { useApp }                from "../../context/AppContext.jsx";
 
 function Avatar({ name, size = 44, isDark }) {
   const initials = name
@@ -49,14 +49,16 @@ export function LeadDetailPanel({ lead, isDark, onStatusUpdate, onClose }) {
   const [copiedEmail, setCopiedEmail]             = useState(false);
   const [selectedTemplate, setSelectedTemplate]   = useState(null);
 
-  const templates = loadTemplates();
-  const bg     = isDark ? "#0f172a" : "#ffffff";
-  const border = isDark ? "#1e293b" : "#f1f5f9";
-  const txt    = isDark ? "#e2e8f0" : "#0f172a";
-  const sub    = isDark ? "#94a3b8" : "#64748b";
-  const muted  = isDark ? "#475569" : "#94a3b8";
-  const card   = isDark ? "#1e293b" : "#f8fafc";
-  const accent = isDark ? "#3b82f6" : "#2563eb";
+  const { templates: ctxTemplates, deleteLead } = useApp();
+  const templates = ctxTemplates;
+  const bg        = isDark ? "#0f172a" : "#ffffff";
+  const border    = isDark ? "#1e293b" : "#f1f5f9";
+  const txt       = isDark ? "#e2e8f0" : "#0f172a";
+  const sub       = isDark ? "#94a3b8" : "#64748b";
+  const muted     = isDark ? "#475569" : "#94a3b8";
+  const card      = isDark ? "#1e293b" : "#f8fafc";
+  const accent    = isDark ? "#3b82f6" : "#2563eb";
+  const accentDim = isDark ? "#1a4a94" : "#e0e7ff";
 
   function copyEmail() {
     if (!lead.email) return;
@@ -112,12 +114,20 @@ export function LeadDetailPanel({ lead, isDark, onStatusUpdate, onClose }) {
         position: "sticky", top: 0, background: bg, zIndex: 5,
       }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-          <Avatar name={lead.name} isDark={isDark} />
+          {lead.photoUrl
+            ? <img src={lead.photoUrl} alt={lead.name} style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} onError={e => { e.target.style.display = "none"; }} />
+            : <Avatar name={lead.name} isDark={isDark} />
+          }
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: txt, lineHeight: 1.3 }}>{lead.name}</div>
             <div style={{ fontSize: 12, color: sub, marginTop: 3, lineHeight: 1.4 }}>
               {lead.title}{lead.title && lead.company ? " · " : ""}{lead.company}
             </div>
+            {lead.source === "intel" && (
+              <div style={{ fontSize: 10, color: accent, background: accentDim, padding: "2px 7px", borderRadius: 4, display: "inline-flex", alignItems: "center", gap: 4, marginTop: 4 }}>
+                ◎ Via Intel{lead.runId ? ` · ${new Date(parseInt(lead.runId.replace("run-", ""))).toLocaleDateString()}` : ""}
+              </div>
+            )}
           </div>
           <button
             onClick={onClose}
@@ -253,6 +263,59 @@ export function LeadDetailPanel({ lead, isDark, onStatusUpdate, onClose }) {
           </div>
         )}
 
+        {/* Company */}
+        {(lead.industry || lead.companySize || lead.location || lead.companyDomain) && (
+          <div>
+            <label style={labelStyle}>Company</label>
+            <div style={{ background: card, borderRadius: 8, border: `1px solid ${border}`, padding: "8px 12px", display: "flex", flexDirection: "column", gap: 5 }}>
+              {lead.industry && (
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 11, color: muted }}>Industry</span>
+                  <span style={{ fontSize: 12, color: sub }}>{lead.industry}</span>
+                </div>
+              )}
+              {lead.companySize && (
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 11, color: muted }}>Size</span>
+                  <span style={{ fontSize: 12, color: sub }}>{typeof lead.companySize === "number" ? lead.companySize.toLocaleString() + " employees" : lead.companySize}</span>
+                </div>
+              )}
+              {lead.location && (
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 11, color: muted }}>Location</span>
+                  <span style={{ fontSize: 12, color: sub }}>{lead.location}</span>
+                </div>
+              )}
+              {lead.companyDomain && (
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 11, color: muted }}>Domain</span>
+                  <span style={{ fontSize: 12, color: sub }}>{lead.companyDomain}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Qualification Checks */}
+        {lead.qualChecks?.length > 0 && (
+          <div>
+            <label style={labelStyle}>Qualification Checks</label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              {lead.qualChecks.map((chk, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                  <span style={{ fontSize: 13, flexShrink: 0, marginTop: 1, color: chk.passed === true ? (isDark ? "#4ade80" : "#16a34a") : chk.passed === false ? (isDark ? "#f87171" : "#dc2626") : muted }}>
+                    {chk.passed === true ? "✓" : chk.passed === false ? "✗" : "·"}
+                  </span>
+                  <div>
+                    <div style={{ fontSize: 11, color: txt }}>{chk.criterion}</div>
+                    {chk.note && <div style={{ fontSize: 10, color: muted }}>{chk.note}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* LinkedIn */}
         {lead.linkedinUrl && (
           <div>
@@ -326,6 +389,18 @@ export function LeadDetailPanel({ lead, isDark, onStatusUpdate, onClose }) {
             ))}
           </div>
         </div>
+      </div>
+
+      {/* Delete lead */}
+      <div style={{ padding: "12px 16px", borderTop: `1px solid ${border}`, marginTop: "auto" }}>
+        <button
+          onClick={() => { if (window.confirm(`Delete ${lead.name}? This cannot be undone.`)) { deleteLead(lead.id); onClose(); } }}
+          style={{ fontSize: 11, color: muted, background: "none", border: "none", cursor: "pointer", padding: 0 }}
+          onMouseEnter={e => e.target.style.color = isDark ? "#f87171" : "#dc2626"}
+          onMouseLeave={e => e.target.style.color = muted}
+        >
+          Delete lead
+        </button>
       </div>
     </div>
   );

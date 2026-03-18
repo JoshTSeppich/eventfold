@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useApp } from "../context/AppContext.jsx";
 import { fillTemplate } from "../data/defaultTemplates.js";
@@ -67,24 +67,50 @@ Return only the JSON, no extra text.`;
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function EmailView({ T }) {
-  const { leads, templates, settings } = useApp();
+  const { leads, templates, settings, drafts, saveDraft, clearDraft, updateLead } = useApp();
 
   const [selectedLeadId, setSelectedLeadId]   = useState("");
   const [tone,           setTone]             = useState("professional");
   const [goal,           setGoal]             = useState("intro");
   const [context,        setContext]          = useState("");
   const [selectedTplId,  setSelectedTplId]    = useState("");
-  const [draft,          setDraft]            = useState(null);   // { subject, body }
+  const [draft,          setDraft]            = useState(null);
   const [editedSubject,  setEditedSubject]    = useState("");
   const [editedBody,     setEditedBody]       = useState("");
   const [generating,     setGenerating]       = useState(false);
   const [error,          setError]            = useState(null);
   const [copiedField,    setCopiedField]      = useState(null);
   const [model,          setModel]            = useState("sonnet");
+  const [markedSent,     setMarkedSent]       = useState(false);
   const copyTimer = useRef(null);
 
   const activeLead = leads.find(l => l.id === selectedLeadId) || null;
   const activeTemplate = templates.find(t => t.id === selectedTplId) || null;
+
+  // ── Restore persisted draft when lead changes ──────────────────────────────
+  const onLeadChange = (leadId) => {
+    setSelectedLeadId(leadId);
+    setMarkedSent(false);
+    const saved = drafts[leadId];
+    if (saved) {
+      setDraft({ subject: saved.subject, body: saved.body });
+      setEditedSubject(saved.subject || "");
+      setEditedBody(saved.body || "");
+      if (saved.tone) setTone(saved.tone);
+      if (saved.goal) setGoal(saved.goal);
+    } else {
+      setDraft(null);
+      setEditedSubject("");
+      setEditedBody("");
+    }
+  };
+
+  // ── Persist draft whenever edited ────────────────────────────────────────────
+  const persistDraft = (subject, body) => {
+    if (selectedLeadId && (subject || body)) {
+      saveDraft(selectedLeadId, { subject, body, tone, goal });
+    }
+  };
 
   const handleGenerate = async () => {
     if (!activeLead) return;
@@ -111,11 +137,12 @@ export function EmailView({ T }) {
       });
       const clean = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
       const parsed = JSON.parse(clean);
+      const filledBody = (parsed.body || "").replace(/\{\{senderName\}\}/g, settings.senderName || "{{senderName}}");
       setDraft(parsed);
       setEditedSubject(parsed.subject || "");
-      setEditedBody(
-        (parsed.body || "").replace(/\{\{senderName\}\}/g, settings.senderName || "{{senderName}}")
-      );
+      setEditedBody(filledBody);
+      // Auto-persist new draft
+      saveDraft(selectedLeadId, { subject: parsed.subject || "", body: filledBody, tone, goal });
     } catch (e) {
       setError(String(e));
     } finally {
@@ -137,6 +164,16 @@ export function EmailView({ T }) {
     const subject = encodeURIComponent(editedSubject);
     const body    = encodeURIComponent(editedBody);
     invoke("open_url", { url: `mailto:${to}?subject=${subject}&body=${body}` });
+    // Auto-mark as contacted if still new
+    if (activeLead.outreachStatus === "new") {
+      updateLead(activeLead.id, l => ({
+        ...l,
+        outreachStatus: "contacted",
+        contactedAt:    l.contactedAt || new Date().toISOString(),
+        notes: [...(l.notes || []), { id: crypto.randomUUID(), body: `Email sent: "${editedSubject}"`, source: "system", createdAt: new Date().toISOString() }],
+      }));
+    }
+    setMarkedSent(true);
   };
 
   const inputStyle = {
@@ -175,7 +212,7 @@ export function EmailView({ T }) {
           </div>
           <select
             value={selectedLeadId}
-            onChange={e => setSelectedLeadId(e.target.value)}
+            onChange={e => onLeadChange(e.target.value)}
             style={{ ...inputStyle }}
           >
             <option value="">Select a lead…</option>
@@ -355,8 +392,20 @@ export function EmailView({ T }) {
               display: "flex", alignItems: "center", justifyContent: "space-between",
               flexShrink: 0,
             }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>
-                Draft for <span style={{ color: T.accent }}>{activeLead?.name}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>
+                  Draft for <span style={{ color: T.accent }}>{activeLead?.name}</span>
+                </div>
+                {markedSent && (
+                  <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: T.greenDim, color: T.green, fontWeight: 700 }}>
+                    ✓ Marked contacted
+                  </span>
+                )}
+                {drafts[selectedLeadId] && !markedSent && (
+                  <span style={{ fontSize: 10, color: T.textMuted }}>
+                    Draft saved {new Date(drafts[selectedLeadId].updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                )}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button
@@ -401,7 +450,7 @@ export function EmailView({ T }) {
               </div>
               <input
                 value={editedSubject}
-                onChange={e => setEditedSubject(e.target.value)}
+                onChange={e => { setEditedSubject(e.target.value); persistDraft(e.target.value, editedBody); }}
                 style={{
                   width: "100%", padding: "9px 11px",
                   background: T.card, border: `1px solid ${T.border}`,
@@ -427,7 +476,7 @@ export function EmailView({ T }) {
               </div>
               <textarea
                 value={editedBody}
-                onChange={e => setEditedBody(e.target.value)}
+                onChange={e => { setEditedBody(e.target.value); persistDraft(editedSubject, e.target.value); }}
                 style={{
                   flex: 1, padding: "12px 14px",
                   background: T.card, border: `1px solid ${T.border}`,
