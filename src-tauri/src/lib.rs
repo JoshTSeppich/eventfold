@@ -98,6 +98,72 @@ async fn apollo_people_search(
 }
 
 #[tauri::command]
+async fn search_apollo_companies(
+    api_key: String,
+    filters: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+
+    let mut body = serde_json::json!({
+        "page": 1,
+        "per_page": 25,
+    });
+
+    // Map filter fields to Apollo company search parameters
+    if let serde_json::Value::Object(ref map) = filters {
+        // keywords → q_organization_keyword_tags (split by comma)
+        if let Some(kw) = map.get("keywords").and_then(|v| v.as_str()) {
+            let tags: Vec<&str> = kw.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+            if !tags.is_empty() {
+                body["q_organization_keyword_tags"] = serde_json::json!(tags);
+            }
+        }
+        // industry → organization_industries (split by comma)
+        if let Some(ind) = map.get("industry").and_then(|v| v.as_str()) {
+            let inds: Vec<&str> = ind.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+            if !inds.is_empty() {
+                body["organization_industries"] = serde_json::json!(inds);
+            }
+        }
+        // employee_count → organization_num_employees_ranges
+        if let Some(emp) = map.get("employee_count").and_then(|v| v.as_str()) {
+            if !emp.trim().is_empty() {
+                body["organization_num_employees_ranges"] = serde_json::json!([emp.trim()]);
+            }
+        }
+        // technologies → currently_using_any_of_technology_uids (split by comma)
+        if let Some(tech) = map.get("technologies").and_then(|v| v.as_str()) {
+            let techs: Vec<&str> = tech.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+            if !techs.is_empty() {
+                body["currently_using_any_of_technology_uids"] = serde_json::json!(techs);
+            }
+        }
+    }
+
+    let resp: serde_json::Value = client
+        .post("https://api.apollo.io/api/v1/mixed_companies/search")
+        .header("X-Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .header("Cache-Control", "no-cache")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if let Some(err) = resp.get("error") {
+        return Err(err
+            .as_str()
+            .or_else(|| resp["message"].as_str())
+            .unwrap_or("Apollo company search error")
+            .to_string());
+    }
+    Ok(resp)
+}
+
+#[tauri::command]
 async fn apollo_bulk_match(api_key: String, details: Vec<Value>) -> Result<Value, String> {
     let client = reqwest::Client::new();
     // Strip null values from each detail object
@@ -257,6 +323,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             anthropic_chat,
             apollo_people_search,
+            search_apollo_companies,
             apollo_bulk_match,
             cache_apollo_contacts,
             get_cached_apollo_ids,

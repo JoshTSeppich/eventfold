@@ -4,6 +4,7 @@ import { useApp } from "../../context/AppContext.jsx";
 // ─── Static action definitions ────────────────────────────────────────────────
 
 const ACTIONS = [
+  { id: "goto-prospect", label: "Go to Prospect Intel", icon: "◉", action: "tab:prospect" },
   { id: "goto-intel",     icon: "◎", label: "Go to Intel",      tab: "intel",     hint: "I" },
   { id: "goto-leads",     icon: "◈", label: "Go to Leads",      tab: "leads",     hint: "L" },
   { id: "goto-followups", icon: "↩", label: "Go to Follow-ups", tab: "followups", hint: "F" },

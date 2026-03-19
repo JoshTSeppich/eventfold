@@ -8,6 +8,7 @@ import { FollowUpsView }  from "./views/FollowUpsView.jsx";
 import { AnalyticsView }  from "./views/AnalyticsView.jsx";
 import { TodayView }      from "./views/TodayView.jsx";
 import { ActivityView }   from "./views/ActivityView.jsx";
+import { ProspectView }   from "./views/ProspectView.jsx";
 import { SettingsModal }  from "./components/common/SettingsModal.jsx";
 import { CommandPalette } from "./components/common/CommandPalette.jsx";
 import { TemplateManager } from "./components/common/TemplateManager.jsx";
@@ -60,6 +61,7 @@ const LIGHT = {
 // ─── Nav tabs ─────────────────────────────────────────────────────────────────
 
 const TABS = [
+  { id: "prospect",  label: "Prospect",  icon: "◉" },
   { id: "intel",     label: "Intel",      icon: "◎" },
   { id: "leads",     label: "Leads",      icon: "◈" },
   { id: "followups", label: "Follow-ups", icon: "↩" },
@@ -283,6 +285,7 @@ function Shell() {
 
       {/* ── Views ────────────────────────────────────────────────────────── */}
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        {activeTab === "prospect"  && <ProspectView  T={T} />}
         {activeTab === "intel"     && <IntelView     T={T} onSendToLeads={handleSendToLeads} />}
         {activeTab === "leads"     && <LeadsView      T={T} />}
         {activeTab === "followups" && <FollowUpsView  T={T} onSwitchToLeads={() => setActiveTab("leads")} />}
